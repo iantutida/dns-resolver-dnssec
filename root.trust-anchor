@@ -1,0 +1,21 @@
+; Root Zone Trust Anchor (KSK 2024)
+; Fonte oficial: https://data.iana.org/root-anchors/root-anchors.xml
+; Válido a partir de 2024
+;
+; Este trust anchor é usado como ponto inicial da cadeia de confiança DNSSEC.
+; Ele contém o hash (digest) da DNSKEY pública do Root Zone.
+;
+; Key Tag: 20326
+; Algorithm: 8 (RSA/SHA-256)
+; Digest Type: 2 (SHA-256)
+;
+; IMPORTANTE: Quando a IANA publicar um novo Root KSK, atualize este arquivo.
+; Histórico: A última mudança do Root KSK ocorreu em 2018 (de 19036 para 20326).
+
+. IN DS 20326 8 2 E06D44B80B8F1D39A95C0B0D7C65D08458E880409BBC683457104237C7F8EC8D
+
+; Para verificar este trust anchor:
+; 1. Visite: https://data.iana.org/root-anchors/root-anchors.xml
+; 2. Compare o digest acima com o publicado pela IANA
+; 3. Ou use: dig @8.8.8.8 . DNSKEY +dnssec | grep 20326
+

@@ -1,0 +1,627 @@
+#include "dns_resolver/DNSParser.h"
+#include <arpa/inet.h>
+#include <cstring>
+#include <sstream>
+#include <iomanip>
+#include <iostream>
+
+namespace dns_resolver {
+
+std::vector<uint8_t> DNSParser::serialize(const DNSMessage& message) {
+    std::vector<uint8_t> buffer;
+    buffer.reserve(512); // Tamanho típico de mensagem DNS UDP
+    
+    // ========== SERIALIZAÇÃO DO HEADER (12 bytes) ==========
+    
+    // ID (2 bytes, big-endian) - byte alto primeiro
+    buffer.push_back((message.header.id >> 8) & 0xFF);
+    buffer.push_back(message.header.id & 0xFF);
+    
+    // Flags (2 bytes, big-endian)
+    uint16_t flags = encodeFlags(message.header);
+    buffer.push_back((flags >> 8) & 0xFF);
+    buffer.push_back(flags & 0xFF);
+    
+    // QDCOUNT (2 bytes, big-endian)
+    buffer.push_back((message.header.qdcount >> 8) & 0xFF);
+    buffer.push_back(message.header.qdcount & 0xFF);
+    
+    // ANCOUNT (2 bytes, big-endian)
+    buffer.push_back((message.header.ancount >> 8) & 0xFF);
+    buffer.push_back(message.header.ancount & 0xFF);
+    
+    // NSCOUNT (2 bytes, big-endian)
+    buffer.push_back((message.header.nscount >> 8) & 0xFF);
+    buffer.push_back(message.header.nscount & 0xFF);
+    
+    // ARCOUNT (2 bytes, big-endian)
+    buffer.push_back((message.header.arcount >> 8) & 0xFF);
+    buffer.push_back(message.header.arcount & 0xFF);
+    
+    // ========== SERIALIZAÇÃO DAS QUESTIONS ==========
+    
+    for (const auto& question : message.questions) {
+        // Codificar o nome de domínio (qname)
+        std::vector<uint8_t> encoded_name = encodeDomainName(question.qname);
+        buffer.insert(buffer.end(), encoded_name.begin(), encoded_name.end());
+        
+        // QTYPE (2 bytes, big-endian)
+        buffer.push_back((question.qtype >> 8) & 0xFF);
+        buffer.push_back(question.qtype & 0xFF);
+        
+        // QCLASS (2 bytes, big-endian)
+        buffer.push_back((question.qclass >> 8) & 0xFF);
+        buffer.push_back(question.qclass & 0xFF);
+    }
+    
+    // NOTA: Serialização de answers, authority e additional será implementada
+    // em stories futuras quando for necessário parsing de respostas completas
+    
+    // ========== EDNS0 OPT PSEUDO-RR (STORY 3.2) ==========
+    
+    if (message.use_edns) {
+        // Nome: root (.) - 1 byte
+        buffer.push_back(0x00);
+        
+        // Type: OPT (41) - 2 bytes, big-endian
+        buffer.push_back(0x00);
+        buffer.push_back(0x29);
+        
+        // Class: UDP payload size - 2 bytes, big-endian
+        uint16_t udp_size = message.edns.udp_size;
+        buffer.push_back((udp_size >> 8) & 0xFF);
+        buffer.push_back(udp_size & 0xFF);
+        
+        // TTL: 4 bytes [Extended RCODE (1) + Version (1) + Flags (2)]
+        uint8_t ext_rcode = 0;  // Extended RCODE (always 0 for now)
+        uint8_t version = message.edns.version;
+        uint16_t flags = message.edns.dnssec_ok ? 0x8000 : 0x0000;  // DO bit is bit 15
+        
+        buffer.push_back(ext_rcode);
+        buffer.push_back(version);
+        buffer.push_back((flags >> 8) & 0xFF);
+        buffer.push_back(flags & 0xFF);
+        
+        // RDLENGTH: 0 (no additional options) - 2 bytes
+        buffer.push_back(0x00);
+        buffer.push_back(0x00);
+        
+        // IMPORTANTE: Atualizar ARCOUNT no header
+        // Posição 10-11 no buffer (logo após NSCOUNT)
+        uint16_t arcount = message.header.arcount + 1;
+        buffer[10] = (arcount >> 8) & 0xFF;
+        buffer[11] = arcount & 0xFF;
+    }
+    
+    return buffer;
+}
+
+// ========== IMPLEMENTAÇÃO DO PARSING (STORY 1.2) ==========
+
+DNSMessage DNSParser::parse(const std::vector<uint8_t>& buffer) {
+    if (buffer.size() < 12) {
+        throw std::runtime_error(
+            "Resposta DNS muito pequena (" + std::to_string(buffer.size()) + 
+            " bytes, mínimo 12)"
+        );
+    }
+    
+    DNSMessage message;
+    size_t pos = 0;
+    
+    // 1. Parsear header (12 bytes)
+    message.header = parseHeader(buffer, pos);
+    
+    // 2. Parsear questions (QDCOUNT vezes)
+    for (uint16_t i = 0; i < message.header.qdcount; i++) {
+        message.questions.push_back(parseQuestion(buffer, pos));
+    }
+    
+    // 3. Parsear answers (ANCOUNT vezes)
+    for (uint16_t i = 0; i < message.header.ancount; i++) {
+        message.answers.push_back(parseResourceRecord(buffer, pos));
+    }
+    
+    // 4. Parsear authority (NSCOUNT vezes)
+    for (uint16_t i = 0; i < message.header.nscount; i++) {
+        message.authority.push_back(parseResourceRecord(buffer, pos));
+    }
+    
+    // 5. Parsear additional (ARCOUNT vezes)
+    for (uint16_t i = 0; i < message.header.arcount; i++) {
+        message.additional.push_back(parseResourceRecord(buffer, pos));
+    }
+    
+    return message;
+}
+
+DNSHeader DNSParser::parseHeader(const std::vector<uint8_t>& buffer, size_t& pos) {
+    if (pos + 12 > buffer.size()) {
+        throw std::runtime_error("Buffer muito pequeno para header DNS");
+    }
+    
+    DNSHeader header;
+    
+    // ID (2 bytes)
+    header.id = readUint16(buffer, pos);
+    pos += 2;
+    
+    // Flags (2 bytes)
+    uint16_t flags = readUint16(buffer, pos);
+    pos += 2;
+    
+    // Decodificar flags
+    header.qr = (flags & 0x8000) != 0;
+    header.opcode = (flags >> 11) & 0x0F;
+    header.aa = (flags & 0x0400) != 0;
+    header.tc = (flags & 0x0200) != 0;
+    header.rd = (flags & 0x0100) != 0;
+    header.ra = (flags & 0x0080) != 0;
+    header.z = (flags >> 6) & 0x01;  // bit 6 apenas (reservado)
+    header.ad = (flags & 0x0020) != 0;  // bit 5 (Authenticated Data - Story 3.5)
+    header.rcode = flags & 0x0F;
+    
+    // Contadores (8 bytes)
+    header.qdcount = readUint16(buffer, pos);
+    pos += 2;
+    header.ancount = readUint16(buffer, pos);
+    pos += 2;
+    header.nscount = readUint16(buffer, pos);
+    pos += 2;
+    header.arcount = readUint16(buffer, pos);
+    pos += 2;
+    
+    return header;
+}
+
+std::string DNSParser::parseDomainName(
+    const std::vector<uint8_t>& buffer,
+    size_t& pos,
+    int jump_limit
+) {
+    std::string name;
+    int jumps = 0;
+    size_t original_pos = pos;
+    bool jumped = false;
+    
+    while (true) {
+        if (pos >= buffer.size()) {
+            throw std::runtime_error(
+                "Parsing de nome de domínio excedeu buffer (pos=" + 
+                std::to_string(pos) + ", size=" + std::to_string(buffer.size()) + ")"
+            );
+        }
+        
+        uint8_t len = buffer[pos];
+        
+        // Verificar se é um ponteiro (primeiros 2 bits = 11)
+        if ((len & 0xC0) == 0xC0) {
+            if (pos + 1 >= buffer.size()) {
+                throw std::runtime_error("Ponteiro de compressão incompleto");
+            }
+            
+            // Extrair offset de 14 bits
+            uint16_t offset = ((buffer[pos] & 0x3F) << 8) | buffer[pos + 1];
+            
+            if (offset >= buffer.size()) {
+                throw std::runtime_error(
+                    "Ponteiro de compressão inválido: offset " + 
+                    std::to_string(offset) + " >= buffer size " + 
+                    std::to_string(buffer.size())
+                );
+            }
+            
+            if (!jumped) {
+                original_pos = pos + 2;  // Salvar posição após o ponteiro
+                jumped = true;
+            }
+            
+            pos = offset;
+            jumps++;
+            
+            if (jumps > jump_limit) {
+                throw std::runtime_error(
+                    "Muitos saltos em nome de domínio (possível loop): " + 
+                    std::to_string(jumps)
+                );
+            }
+            continue;
+        }
+        
+        // Fim do nome (len = 0)
+        if (len == 0) {
+            pos++;
+            break;
+        }
+        
+        // Validar tamanho do label
+        if (len > 63) {
+            throw std::runtime_error(
+                "Label de nome de domínio muito longo: " + std::to_string(len)
+            );
+        }
+        
+        // Verificar bounds do label
+        if (pos + 1 + len > buffer.size()) {
+            throw std::runtime_error(
+                "Label de nome de domínio excede buffer"
+            );
+        }
+        
+        // Adicionar separador se não é o primeiro label
+        if (!name.empty()) {
+            name += ".";
+        }
+        
+        // Copiar label para o nome
+        name.append(
+            reinterpret_cast<const char*>(&buffer[pos + 1]),
+            len
+        );
+        
+        pos += 1 + len;
+    }
+    
+    // Se houve jump, restaurar posição após o ponteiro
+    if (jumped) {
+        pos = original_pos;
+    }
+    
+    return name;
+}
+
+DNSQuestion DNSParser::parseQuestion(const std::vector<uint8_t>& buffer, size_t& pos) {
+    DNSQuestion question;
+    
+    // Parsear nome
+    question.qname = parseDomainName(buffer, pos);
+    
+    // Parsear type e class (4 bytes)
+    if (pos + 4 > buffer.size()) {
+        throw std::runtime_error("Question DNS incompleta");
+    }
+    
+    question.qtype = readUint16(buffer, pos);
+    pos += 2;
+    
+    question.qclass = readUint16(buffer, pos);
+    pos += 2;
+    
+    return question;
+}
+
+DNSResourceRecord DNSParser::parseResourceRecord(
+    const std::vector<uint8_t>& buffer,
+    size_t& pos
+) {
+    DNSResourceRecord rr;
+    
+    // 1. Parsear nome (com descompressão)
+    rr.name = parseDomainName(buffer, pos);
+    
+    // 2. Parsear type, class, ttl, rdlength (10 bytes)
+    if (pos + 10 > buffer.size()) {
+        throw std::runtime_error("Resource Record incompleto");
+    }
+    
+    rr.type = readUint16(buffer, pos);
+    pos += 2;
+    
+    rr.rr_class = readUint16(buffer, pos);
+    pos += 2;
+    
+    rr.ttl = readUint32(buffer, pos);
+    pos += 4;
+    
+    rr.rdlength = readUint16(buffer, pos);
+    pos += 2;
+    
+    // 3. Verificar que há bytes suficientes para RDATA
+    if (pos + rr.rdlength > buffer.size()) {
+        throw std::runtime_error(
+            "RDATA excede buffer (rdlength=" + std::to_string(rr.rdlength) + 
+            ", bytes restantes=" + std::to_string(buffer.size() - pos) + ")"
+        );
+    }
+    
+    // 4. Copiar RDATA bruto
+    rr.rdata.assign(buffer.begin() + pos, buffer.begin() + pos + rr.rdlength);
+    
+    // 5. Parsear RDATA baseado no tipo
+    size_t rdata_start = pos;
+    size_t rdata_pos = rdata_start;
+    
+    switch (rr.type) {
+        case DNSType::A:  // Tipo A (IPv4)
+            if (rr.rdlength == 4) {
+                rr.rdata_a = std::to_string(buffer[rdata_pos]) + "." +
+                             std::to_string(buffer[rdata_pos + 1]) + "." +
+                             std::to_string(buffer[rdata_pos + 2]) + "." +
+                             std::to_string(buffer[rdata_pos + 3]);
+            }
+            break;
+        
+        case DNSType::NS:  // Tipo NS (nameserver)
+            rr.rdata_ns = parseDomainName(buffer, rdata_pos);
+            break;
+        
+        case DNSType::CNAME:  // Tipo CNAME (canonical name)
+            rr.rdata_cname = parseDomainName(buffer, rdata_pos);
+            break;
+        
+        case DNSType::SOA:  // Tipo SOA (start of authority)
+            if (rr.rdlength >= 20) {  // Mínimo: 2 nomes + 5 uint32_t
+                rr.rdata_soa.mname = parseDomainName(buffer, rdata_pos);
+                rr.rdata_soa.rname = parseDomainName(buffer, rdata_pos);
+                
+                if (rdata_pos + 20 <= rdata_start + rr.rdlength) {
+                    rr.rdata_soa.serial = readUint32(buffer, rdata_pos);
+                    rdata_pos += 4;
+                    rr.rdata_soa.refresh = readUint32(buffer, rdata_pos);
+                    rdata_pos += 4;
+                    rr.rdata_soa.retry = readUint32(buffer, rdata_pos);
+                    rdata_pos += 4;
+                    rr.rdata_soa.expire = readUint32(buffer, rdata_pos);
+                    rdata_pos += 4;
+                    rr.rdata_soa.minimum = readUint32(buffer, rdata_pos);
+                }
+            }
+            break;
+        
+        case DNSType::PTR:  // Tipo PTR (pointer)
+            rr.rdata_ptr = parseDomainName(buffer, rdata_pos);
+            break;
+        
+        case DNSType::MX:  // Tipo MX (mail exchange)
+            if (rr.rdlength >= 3) {
+                uint16_t priority = readUint16(buffer, rdata_pos);
+                rdata_pos += 2;
+                std::string exchange = parseDomainName(buffer, rdata_pos);
+                rr.rdata_mx = std::to_string(priority) + " " + exchange;
+            }
+            break;
+        
+        case DNSType::TXT:  // Tipo TXT (text)
+            if (rr.rdlength > 0) {
+                // TXT começa com 1 byte de tamanho
+                uint8_t txt_len = buffer[rdata_pos];
+                if (rdata_pos + 1 + txt_len <= rdata_start + rr.rdlength) {
+                    rr.rdata_txt.assign(
+                        reinterpret_cast<const char*>(&buffer[rdata_pos + 1]),
+                        txt_len
+                    );
+                }
+            }
+            break;
+        
+        case DNSType::AAAA:  // Tipo AAAA (IPv6)
+            if (rr.rdlength == 16) {
+                // Formato IPv6 simplificado (hex groups)
+                std::ostringstream oss;
+                for (int i = 0; i < 8; i++) {
+                    if (i > 0) oss << ":";
+                    uint16_t group = (buffer[rdata_pos + i * 2] << 8) | 
+                                     buffer[rdata_pos + i * 2 + 1];
+                    oss << std::hex << group;
+                }
+                rr.rdata_aaaa = oss.str();
+            }
+            break;
+        
+        case DNSType::DNSKEY:  // Tipo DNSKEY (chave pública DNSSEC - Story 3.2)
+            if (rr.rdlength < 4) {
+                throw std::runtime_error("DNSKEY RDATA too short (minimum 4 bytes)");
+            }
+            rr.rdata_dnskey.flags = readUint16(buffer, rdata_pos);
+            rdata_pos += 2;
+            rr.rdata_dnskey.protocol = buffer[rdata_pos];
+            rdata_pos += 1;
+            rr.rdata_dnskey.algorithm = buffer[rdata_pos];
+            rdata_pos += 1;
+            
+            // Public key: resto do RDATA
+            if (rdata_pos < rdata_start + rr.rdlength) {
+                rr.rdata_dnskey.public_key.assign(
+                    buffer.begin() + rdata_pos,
+                    buffer.begin() + rdata_start + rr.rdlength
+                );
+            }
+            break;
+        
+        case DNSType::DS: {  // Tipo DS (delegation signer - Story 3.2)
+            if (rr.rdlength < 4) {
+                throw std::runtime_error("DS RDATA too short (minimum 4 bytes)");
+            }
+            rr.rdata_ds.key_tag = readUint16(buffer, rdata_pos);
+            rdata_pos += 2;
+            rr.rdata_ds.algorithm = buffer[rdata_pos];
+            rdata_pos += 1;
+            rr.rdata_ds.digest_type = buffer[rdata_pos];
+            rdata_pos += 1;
+            
+            // Digest: resto do RDATA
+            if (rdata_pos < rdata_start + rr.rdlength) {
+                rr.rdata_ds.digest.assign(
+                    buffer.begin() + rdata_pos,
+                    buffer.begin() + rdata_start + rr.rdlength
+                );
+            }
+            
+            // Validar digest size
+            size_t expected_size = (rr.rdata_ds.digest_type == 2) ? 32 : 20;  // SHA-256=32, SHA-1=20
+            if (rr.rdata_ds.digest.size() != expected_size) {
+                std::cerr << "Warning: DS digest size mismatch (expected " 
+                          << expected_size << ", got " << rr.rdata_ds.digest.size() << ")" << std::endl;
+            }
+            break;
+        }
+        
+        case DNSType::RRSIG: {  // Tipo RRSIG (assinatura - Story 3.4)
+            if (rr.rdlength < 18) {
+                throw std::runtime_error("RRSIG RDATA too short (minimum 18 bytes)");
+            }
+            
+            // Type covered (2 bytes)
+            rr.rdata_rrsig.type_covered = readUint16(buffer, rdata_pos);
+            rdata_pos += 2;
+            
+            // Algorithm (1 byte)
+            rr.rdata_rrsig.algorithm = buffer[rdata_pos];
+            rdata_pos += 1;
+            
+            // Labels (1 byte)
+            rr.rdata_rrsig.labels = buffer[rdata_pos];
+            rdata_pos += 1;
+            
+            // Original TTL (4 bytes)
+            rr.rdata_rrsig.original_ttl = readUint32(buffer, rdata_pos);
+            rdata_pos += 4;
+            
+            // Signature expiration (4 bytes)
+            rr.rdata_rrsig.signature_expiration = readUint32(buffer, rdata_pos);
+            rdata_pos += 4;
+            
+            // Signature inception (4 bytes)
+            rr.rdata_rrsig.signature_inception = readUint32(buffer, rdata_pos);
+            rdata_pos += 4;
+            
+            // Key tag (2 bytes)
+            rr.rdata_rrsig.key_tag = readUint16(buffer, rdata_pos);
+            rdata_pos += 2;
+            
+            // Signer name (domain name)
+            rr.rdata_rrsig.signer_name = parseDomainName(buffer, rdata_pos);
+            
+            // Signature (resto do RDATA)
+            if (rdata_pos < rdata_start + rr.rdlength) {
+                rr.rdata_rrsig.signature.assign(
+                    buffer.begin() + rdata_pos,
+                    buffer.begin() + rdata_start + rr.rdlength
+                );
+            }
+            break;
+        }
+        
+        default:
+            // Tipo desconhecido - RDATA bruto já foi copiado
+            break;
+    }
+    
+    pos += rr.rdlength;
+    return rr;
+}
+
+uint16_t DNSParser::readUint16(const std::vector<uint8_t>& buffer, size_t pos) {
+    if (pos + 2 > buffer.size()) {
+        throw std::runtime_error("Tentativa de ler uint16 além do buffer");
+    }
+    return (static_cast<uint16_t>(buffer[pos]) << 8) | buffer[pos + 1];
+}
+
+uint32_t DNSParser::readUint32(const std::vector<uint8_t>& buffer, size_t pos) {
+    if (pos + 4 > buffer.size()) {
+        throw std::runtime_error("Tentativa de ler uint32 além do buffer");
+    }
+    return (static_cast<uint32_t>(buffer[pos]) << 24) |
+           (static_cast<uint32_t>(buffer[pos + 1]) << 16) |
+           (static_cast<uint32_t>(buffer[pos + 2]) << 8) |
+           buffer[pos + 3];
+}
+
+std::vector<uint8_t> DNSParser::encodeDomainName(const std::string& domain) {
+    std::vector<uint8_t> encoded;
+    
+    // Validação básica
+    if (domain.empty()) {
+        throw std::invalid_argument("Nome de domínio vazio");
+    }
+    
+    if (domain.length() > 255) {
+        throw std::invalid_argument("Nome de domínio excede 255 caracteres");
+    }
+    
+    // Caso especial: root domain "."
+    if (domain == ".") {
+        encoded.push_back(0x00);  // Root é apenas null byte
+        return encoded;
+    }
+    
+    // Dividir o domínio em labels (separados por '.')
+    std::istringstream iss(domain);
+    std::string label;
+    
+    while (std::getline(iss, label, '.')) {
+        if (label.empty()) {
+            // Ignora labels vazios (ex: trailing dot em "example.com.")
+            continue;
+        }
+        
+        if (label.length() > 63) {
+            throw std::invalid_argument("Label excede 63 caracteres: " + label);
+        }
+        
+        // Adicionar o tamanho do label
+        encoded.push_back(static_cast<uint8_t>(label.length()));
+        
+        // Adicionar os bytes do label
+        for (char ch : label) {
+            encoded.push_back(static_cast<uint8_t>(ch));
+        }
+    }
+    
+    // Adicionar o terminador nulo (0x00)
+    encoded.push_back(0x00);
+    
+    return encoded;
+}
+
+uint16_t DNSParser::encodeFlags(const DNSHeader& header) {
+    uint16_t flags = 0;
+    
+    // QR (bit 15)
+    if (header.qr) {
+        flags |= (1 << 15);
+    }
+    
+    // OPCODE (bits 14-11)
+    flags |= ((header.opcode & 0x0F) << 11);
+    
+    // AA (bit 10)
+    if (header.aa) {
+        flags |= (1 << 10);
+    }
+    
+    // TC (bit 9)
+    if (header.tc) {
+        flags |= (1 << 9);
+    }
+    
+    // RD (bit 8)
+    if (header.rd) {
+        flags |= (1 << 8);
+    }
+    
+    // RA (bit 7)
+    if (header.ra) {
+        flags |= (1 << 7);
+    }
+    
+    // Z (bit 6) - reservado, deve ser 0
+    flags |= ((header.z & 0x01) << 6);
+    
+    // AD (bit 5) - Authenticated Data (DNSSEC - Story 3.5)
+    if (header.ad) {
+        flags |= (1 << 5);
+    }
+    
+    // CD (bit 4) - Checking Disabled (não usado por enquanto)
+    // Mantido 0
+    
+    // RCODE (bits 3-0)
+    flags |= (header.rcode & 0x0F);
+    
+    return flags;
+}
+
+} // namespace dns_resolver
+

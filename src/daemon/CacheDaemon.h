@@ -1,3 +1,13 @@
+/*
+ * ----------------------------------------
+ * Arquivo: CacheDaemon.h
+ * Propósito: Interface do daemon de cache DNS distribuído com IPC
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver Recursivo Validante com Cache e DNSSEC
+ * ----------------------------------------
+ */
+
 #pragma once
 
 #include "dns_resolver/types.h"
@@ -8,9 +18,7 @@
 
 namespace dns_cache {
 
-/**
- * Entrada de cache com timestamp e TTL
- */
+// Entrada de cache com timestamp e TTL
 struct CacheEntry {
     dns_resolver::DNSMessage response;
     time_t timestamp;
@@ -21,18 +29,12 @@ struct CacheEntry {
     CacheEntry(const dns_resolver::DNSMessage& resp, uint32_t t)
         : response(resp), timestamp(std::time(nullptr)), ttl(t) {}
     
-    /**
-     * Verifica se entrada expirou
-     * @return true se expirada
-     */
+    // Verifica se entrada expirou
     bool isExpired() const {
         return (std::time(nullptr) - timestamp) > static_cast<time_t>(ttl);
     }
     
-    /**
-     * Retorna tempo restante de vida em segundos
-     * @return TTL restante (0 se expirado)
-     */
+    // Retorna tempo restante de vida em segundos
     uint32_t getRemainingTTL() const {
         time_t elapsed = std::time(nullptr) - timestamp;
         if (elapsed >= static_cast<time_t>(ttl)) {
@@ -42,118 +44,64 @@ struct CacheEntry {
     }
 };
 
-/**
- * Daemon de cache DNS (Story 4.1)
- * 
- * Roda em background e gerencia cache de respostas DNS.
- * Comunicação via Unix Domain Socket (/tmp/dns_cache.sock).
- */
+// Daemon de cache DNS distribuído
+// Roda em background e gerencia cache de respostas DNS
+// Comunicação via Unix Domain Socket (/tmp/dns_cache.sock)
 class CacheDaemon {
 public:
-    /**
-     * Construtor
-     */
     CacheDaemon();
-    
-    /**
-     * Destrutor - limpa recursos
-     */
     ~CacheDaemon();
     
-    /**
-     * Inicia o loop principal do daemon
-     * Bloqueia até receber sinal de parada
-     */
+    // Inicia o loop principal do daemon
     void run();
     
-    /**
-     * Para o daemon gracefully
-     */
+    // Para o daemon gracefully
     void stop();
     
-    /**
-     * Configura tamanho máximo do cache positivo
-     * @param size Número máximo de entradas
-     */
+    // Configura tamanho máximo do cache positivo
     void setMaxPositiveEntries(size_t size);
     
-    /**
-     * Configura tamanho máximo do cache negativo
-     * @param size Número máximo de entradas
-     */
+    // Configura tamanho máximo do cache negativo
     void setMaxNegativeEntries(size_t size);
     
-    /**
-     * Limpa cache positivo
-     * @return Número de entradas removidas
-     */
+    // Limpa cache positivo
     size_t purgePositiveCache();
     
-    /**
-     * Limpa cache negativo
-     * @return Número de entradas removidas
-     */
+    // Limpa cache negativo
     size_t purgeNegativeCache();
     
-    /**
-     * Limpa todo o cache
-     * @return Número total de entradas removidas
-     */
+    // Limpa todo o cache
     size_t flushAll();
     
-    /**
-     * Retorna número de entradas no cache positivo
-     */
+    // Retorna número de entradas no cache positivo
     size_t getPositiveCacheSize() const;
     
-    /**
-     * Retorna número de entradas no cache negativo
-     */
+    // Retorna número de entradas no cache negativo
     size_t getNegativeCacheSize() const;
 
 private:
-    /**
-     * Cria Unix Domain Socket
-     * @return Socket descriptor ou -1 em caso de erro
-     */
+    // Cria Unix Domain Socket
     int createSocket();
     
-    /**
-     * Processa conexão de cliente
-     * @param client_socket Socket do cliente
-     */
+    // Processa conexão de cliente
     void handleClient(int client_socket);
     
-    /**
-     * Processa comando recebido
-     * @param command Comando a processar
-     * @return Resposta a enviar ao cliente
-     */
+    // Processa comando recebido
     std::string processCommand(const std::string& command);
     
-    /**
-     * Remove entradas expiradas
-     */
+    // Remove entradas expiradas
     void cleanupExpiredEntries();
     
-    /**
-     * Adiciona entrada ao cache positivo com política LRU (Story 4.3)
-     * @param question Question DNS
-     * @param entry Entrada de cache
-     */
+    // Adiciona entrada ao cache positivo com política LRU
     void addToCachePositive(
         const dns_resolver::DNSQuestion& question,
         const CacheEntry& entry
     );
     
-    /**
-     * Serializa DNSMessage para IPC (Story 4.3)
-     */
+    // Serializa DNSMessage para IPC
     std::string serializeMessage(const dns_resolver::DNSMessage& msg) const;
     
-    /**
-     * Deserializa DNSMessage do IPC (Story 4.3)
-     */
+    // Deserializa DNSMessage do IPC
     dns_resolver::DNSMessage deserializeMessage(const std::string& data) const;
     
     // Armazenamento

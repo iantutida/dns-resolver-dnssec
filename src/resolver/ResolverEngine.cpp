@@ -1,3 +1,13 @@
+/*
+ * ----------------------------------------
+ * Arquivo: ResolverEngine.cpp
+ * Propósito: Implementação do motor de resolução DNS iterativa com DNSSEC e cache
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver Recursivo Validante com Cache e DNSSEC
+ * ----------------------------------------
+ */
+
 #include "dns_resolver/ResolverEngine.h"
 #include "dns_resolver/ThreadPool.h"
 #include <iostream>
@@ -7,7 +17,7 @@
 
 namespace dns_resolver {
 
-// ========== CONSTRUTOR ==========
+// Construtor
 
 ResolverEngine::ResolverEngine(const ResolverConfig& config)
     : config_(config) {
@@ -20,7 +30,7 @@ ResolverEngine::ResolverEngine(const ResolverConfig& config)
         throw std::invalid_argument("max_iterations must be >= 1");
     }
     
-    // Carregar trust anchors (Story 3.1)
+    // Carregar trust anchors 
     if (!config_.trust_anchor_file.empty()) {
         trust_anchors_.loadFromFile(config_.trust_anchor_file, config_.quiet_mode);
     } else {
@@ -29,11 +39,11 @@ ResolverEngine::ResolverEngine(const ResolverConfig& config)
     
     traceLog("Trust anchors loaded: " + std::to_string(trust_anchors_.count()));
     
-    // STORY 4.2: Configurar cache client
+    // Configurar cache client
     cache_client_.setTraceEnabled(config_.trace_mode);
 }
 
-// ========== MÉTODO PRINCIPAL: RESOLVE ==========
+// Método principal: resolve
 
 DNSMessage ResolverEngine::resolve(const std::string& domain, uint16_t qtype) {
     // Validar entrada
@@ -41,7 +51,7 @@ DNSMessage ResolverEngine::resolve(const std::string& domain, uint16_t qtype) {
         throw std::invalid_argument("Domain cannot be empty");
     }
     
-    // STORY 4.2: Consultar cache primeiro
+    // Consultar cache primeiro
     auto cached_response = cache_client_.query(domain, qtype);
     if (cached_response) {
         // Cache HIT - retornar diretamente
@@ -53,7 +63,7 @@ DNSMessage ResolverEngine::resolve(const std::string& domain, uint16_t qtype) {
     // Limpar cache de servidores consultados
     queried_servers_.clear();
     
-    // STORY 3.3: Limpar registros DNSSEC coletados
+    // Limpar registros DNSSEC coletados
     collected_dnskeys_.clear();
     collected_ds_.clear();
     
@@ -68,7 +78,7 @@ DNSMessage ResolverEngine::resolve(const std::string& domain, uint16_t qtype) {
     traceLog("Initial root server: " + root_server);
     traceLog("========================================");
     
-    // STORY 3.3: Coletar DNSKEY root no início (se DNSSEC ativo)
+    // Coletar DNSKEY root no início (se DNSSEC ativo)
     if (config_.dnssec_enabled) {
         collectDNSKEY(".", root_server);
     }
@@ -80,7 +90,7 @@ DNSMessage ResolverEngine::resolve(const std::string& domain, uint16_t qtype) {
         traceLog("Resolution completed successfully");
         traceLog("========================================");
         
-        // STORY 3.3: Validar cadeia DNSSEC se ativo
+        // Validar cadeia DNSSEC se ativo
         if (config_.dnssec_enabled && !collected_dnskeys_.empty()) {
             traceLog("");
             DNSSECValidator validator(trust_anchors_, config_.trace_mode);
@@ -90,7 +100,7 @@ DNSMessage ResolverEngine::resolve(const std::string& domain, uint16_t qtype) {
                 collected_ds_
             );
             
-            // STORY 3.5: Mapear ValidationResult → AD bit
+            // Mapear ValidationResult → AD bit
             if (validation == ValidationResult::Secure) {
                 traceLog("🔒 DNSSEC Status: SECURE");
                 result.header.ad = true;
@@ -111,11 +121,11 @@ DNSMessage ResolverEngine::resolve(const std::string& domain, uint16_t qtype) {
             }
         }
         
-        // STORY 4.3: Armazenar resposta bem-sucedida no cache
+        // Armazenar resposta bem-sucedida no cache
         if (result.header.rcode == 0 && result.header.ancount > 0) {
             cache_client_.store(result, domain, qtype);
         }
-        // STORY 4.4: Armazenar respostas negativas no cache
+        // Armazenar respostas negativas no cache
         else if (isNXDOMAIN(result)) {
             // NXDOMAIN - extrair TTL do SOA
             DNSResourceRecord soa = extractSOA(result);
@@ -216,7 +226,7 @@ DNSMessage ResolverEngine::performIterativeLookup(
                     traceLog(oss.str());
                 }
                 
-                // STORY 1.4: Verificar se resposta contém CNAME que precisa ser seguido
+                // Verificar se resposta contém CNAME que precisa ser seguido
                 if (hasCNAME(response, qtype)) {
                     traceLog("Response contains CNAME without target type, following...");
                     return followCNAME(response, domain, qtype, depth);
@@ -225,7 +235,7 @@ DNSMessage ResolverEngine::performIterativeLookup(
                 return response;  // Sucesso!
             }
             
-            // STORY 1.5: Verificar se é NODATA
+            // Verificar se é NODATA
             if (isNODATA(response, qtype)) {
                 traceLog("Got NODATA response (domain exists, no records of this type)");
                 
@@ -257,7 +267,7 @@ DNSMessage ResolverEngine::performIterativeLookup(
                     }
                 }
                 
-                // STORY 3.3: Extrair zona delegada ANTES de mudar servidor
+                // Extrair zona delegada ANTES de mudar servidor
                 std::string delegated_zone;
                 for (const auto& rr : response.authority) {
                     if (rr.type == DNSType::NS && !rr.name.empty()) {
@@ -266,7 +276,7 @@ DNSMessage ResolverEngine::performIterativeLookup(
                     }
                 }
                 
-                // STORY 3.3: Coletar DS DA ZONA DELEGADA do servidor PAI (antes de mudar)
+                // Coletar DS DA ZONA DELEGADA do servidor PAI (antes de mudar)
                 if (config_.dnssec_enabled && !delegated_zone.empty() && delegated_zone != ".") {
                     collectDS(delegated_zone, current_server);
                 }
@@ -274,7 +284,7 @@ DNSMessage ResolverEngine::performIterativeLookup(
                 // Selecionar próximo servidor (com ou sem fan-out)
                 std::string next_server;
                 
-                // STORY 6.2: Fan-out se habilitado e múltiplos servidores com glue
+                // Fan-out se habilitado e múltiplos servidores com glue
                 if (config_.fanout_enabled && glue_records.size() > 1) {
                     // Coletar IPs dos servers com glue
                     std::vector<std::string> server_ips;
@@ -310,7 +320,7 @@ DNSMessage ResolverEngine::performIterativeLookup(
                 // Atualizar servidor atual
                 current_server = next_server;
                 
-                // STORY 3.3: Coletar DNSKEY DA ZONA DELEGADA do novo servidor
+                // Coletar DNSKEY DA ZONA DELEGADA do novo servidor
                 if (config_.dnssec_enabled && !delegated_zone.empty()) {
                     collectDNSKEY(delegated_zone, current_server);
                 }
@@ -488,7 +498,7 @@ DNSMessage ResolverEngine::queryServer(
     DNSQuestion question(domain, qtype, DNSClass::IN);
     query.questions.push_back(question);
     
-    // STORY 3.2: Configurar EDNS0 se DNSSEC ativo
+    // Configurar EDNS0 se DNSSEC ativo
     if (config_.dnssec_enabled) {
         query.use_edns = true;
         query.edns.dnssec_ok = true;
@@ -503,7 +513,7 @@ DNSMessage ResolverEngine::queryServer(
     std::vector<uint8_t> response_bytes;
     DNSMessage response;
     
-    // STORY 2.2: Escolher método de comunicação baseado no modo
+    // Escolher método de comunicação baseado no modo
     switch (config_.mode) {
         case QueryMode::TCP:
             // Modo TCP forçado (Story 2.1)
@@ -521,7 +531,7 @@ DNSMessage ResolverEngine::queryServer(
             break;
         
         case QueryMode::DoT:
-            // Modo DoT - DNS over TLS (Story 2.2)
+            // Modo DoT - DNS over TLS 
             if (config_.default_sni.empty()) {
                 throw std::runtime_error(
                     "DoT mode requires SNI (use --sni hostname)"
@@ -546,8 +556,8 @@ DNSMessage ResolverEngine::queryServer(
         
         case QueryMode::UDP:
         default:
-            // Modo UDP padrão (Story 1.1)
-            // Com fallback TCP se truncado (Story 2.1)
+            // Modo UDP padrão 
+            // Com fallback TCP se truncado 
             response_bytes = NetworkModule::queryUDP(
                 server,
                 query_bytes,
@@ -556,7 +566,7 @@ DNSMessage ResolverEngine::queryServer(
             
             response = DNSParser::parse(response_bytes);
             
-            // STORY 2.1: Verificar se resposta está truncada (TC=1)
+            // Verificar se resposta está truncada (TC=1)
             if (isTruncated(response)) {
                 traceLog("Response truncated (TC=1), retrying with TCP...");
                 traceLog("UDP response size: " + std::to_string(response_bytes.size()) + " bytes");
@@ -579,13 +589,13 @@ DNSMessage ResolverEngine::queryServer(
     return response;
 }
 
-// ========== IMPLEMENTAÇÃO TCP FALLBACK (STORY 2.1) ==========
+// ========== IMPLEMENTAÇÃO TCP FALLBACK ==========
 
 bool ResolverEngine::isTruncated(const DNSMessage& response) const {
     return response.header.tc;
 }
 
-// ========== IMPLEMENTAÇÃO DE RESPOSTAS NEGATIVAS (STORY 1.5) ==========
+// ========== IMPLEMENTAÇÃO DE RESPOSTAS NEGATIVAS  ==========
 
 bool ResolverEngine::isNXDOMAIN(const DNSMessage& response) const {
     return response.header.rcode == 3;
@@ -601,7 +611,7 @@ bool ResolverEngine::isNODATA(const DNSMessage& response, [[maybe_unused]] uint1
         return false;
     }
     
-    // Verificar se não é delegação (Story 1.3)
+    // Verificar se não é delegação
     // Se tem NS records na AUTHORITY, é delegação, não NODATA
     for (const auto& rr : response.authority) {
         if (rr.type == DNSType::NS) {
@@ -627,7 +637,7 @@ DNSResourceRecord ResolverEngine::extractSOA(const DNSMessage& response) const {
     return empty;
 }
 
-// ========== IMPLEMENTAÇÃO DE CNAME (STORY 1.4) ==========
+// ========== IMPLEMENTAÇÃO DE CNAME  ==========
 
 bool ResolverEngine::hasCNAME(const DNSMessage& response, uint16_t qtype) const {
     // CNAME só é válido se:
@@ -740,7 +750,7 @@ DNSMessage ResolverEngine::followCNAME(
     return accumulated_response;
 }
 
-// ========== STORY 3.3: Coleta de Registros DNSSEC ==========
+// ========== Coleta de Registros DNSSEC ==========
 
 void ResolverEngine::collectDNSKEY(const std::string& zone, const std::string& server) {
     if (!config_.dnssec_enabled) {
@@ -811,7 +821,7 @@ void ResolverEngine::collectDS(const std::string& zone, const std::string& serve
 }
 
 /**
- * STORY 6.2: Fan-out paralelo - consulta múltiplos NS simultaneamente
+ *Fan-out paralelo - consulta múltiplos NS simultaneamente
  */
 DNSMessage ResolverEngine::queryServersFanout(
     const std::vector<std::string>& servers,

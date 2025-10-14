@@ -1,3 +1,13 @@
+/*
+ * ----------------------------------------
+ * Arquivo: NetworkModule.cpp
+ * Propósito: Implementação do módulo de comunicação de rede DNS (UDP, TCP, DoT)
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver Recursivo Validante com Cache e DNSSEC
+ * ----------------------------------------
+ */
+
 #include "dns_resolver/NetworkModule.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -13,7 +23,7 @@
 
 namespace dns_resolver {
 
-// ========== Implementação do SocketRAII ==========
+// Implementação do SocketRAII
 
 NetworkModule::SocketRAII::SocketRAII(int fd) : fd_(fd) {}
 
@@ -45,7 +55,7 @@ int NetworkModule::SocketRAII::release() {
     return fd;
 }
 
-// ========== Implementação do queryUDP ==========
+// Implementação do queryUDP
 
 std::vector<uint8_t> NetworkModule::queryUDP(
     const std::string& server,
@@ -94,7 +104,7 @@ std::vector<uint8_t> NetworkModule::queryUDP(
         throw std::invalid_argument("Endereço IP inválido: " + server);
     }
     
-    // Enviar a query DNS
+    // Enviar query DNS
     ssize_t sent_bytes = sendto(
         sockfd,
         query.data(),
@@ -117,10 +127,10 @@ std::vector<uint8_t> NetworkModule::queryUDP(
         );
     }
     
-    // ========== RECEBER RESPOSTA (STORY 1.2) ==========
+    // Receber resposta
     
     // Buffer para resposta
-    // STORY 3.2: Com EDNS0, respostas podem ser até 4096 bytes
+    // Com EDNS0, respostas podem ser até 4096 bytes
     std::vector<uint8_t> response(4096);
     socklen_t addr_len = sizeof(server_addr);
     
@@ -159,7 +169,7 @@ std::vector<uint8_t> NetworkModule::queryUDP(
     return response;
 }
 
-// ========== IMPLEMENTAÇÃO TCP (STORY 2.1) ==========
+// ========== IMPLEMENTAÇÃO TCP  ==========
 
 std::vector<uint8_t> NetworkModule::queryTCP(
     const std::string& server,
@@ -342,7 +352,7 @@ bool NetworkModule::recvAll(int sockfd, uint8_t* buffer, size_t length) {
     return true;
 }
 
-// ========== IMPLEMENTAÇÃO DNS over TLS (STORY 2.2) ==========
+// ========== IMPLEMENTAÇÃO DNS over TLS ==========
 
 std::vector<uint8_t> NetworkModule::queryDoT(
     const std::string& server,
@@ -448,7 +458,7 @@ std::vector<uint8_t> NetworkModule::queryDoT(
         );
     }
     
-    // 11. Enviar query (com framing TCP, igual Story 2.1)
+    // 11. Enviar query 
     std::vector<uint8_t> framed_query = addTCPFraming(query);
     
     int sent = SSL_write(ssl, framed_query.data(), 
@@ -494,7 +504,7 @@ std::vector<uint8_t> NetworkModule::queryDoT(
 // ========== HELPERS TLS ==========
 
 void* NetworkModule::createSSLContext() {
-    // Inicializar biblioteca OpenSSL (compatível com 1.1.1+ e 3.x)
+    // Inicializar biblioteca OpenSSL 
     #if OPENSSL_VERSION_NUMBER < 0x10100000L
         SSL_library_init();
         OpenSSL_add_all_algorithms();

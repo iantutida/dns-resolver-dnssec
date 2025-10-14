@@ -1,3 +1,13 @@
+/*
+ * ----------------------------------------
+ * Arquivo: types.h
+ * Propósito: Definições de estruturas e tipos DNS fundamentais
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver Recursivo Validante com Cache e DNSSEC
+ * ----------------------------------------
+ */
+
 #pragma once
 
 #include <cstdint>
@@ -6,20 +16,20 @@
 
 namespace dns_resolver {
 
-// Estrutura do cabeçalho DNS (12 bytes)
+// Cabeçalho DNS padrão (12 bytes)
 struct DNSHeader {
-    uint16_t id;          // ID da transação (gerado aleatoriamente)
+    uint16_t id;          // ID da transação
     
-    // Flags (organizadas como bits individuais)
-    bool qr;              // Query/Response flag (0 = query, 1 = response)
-    uint8_t opcode;       // Operation code (4 bits) - 0 = standard query
+    // Flags do cabeçalho DNS
+    bool qr;              // Query/Response (0=query, 1=response)
+    uint8_t opcode;       // Código de operação (4 bits)
     bool aa;              // Authoritative Answer
     bool tc;              // Truncation flag
     bool rd;              // Recursion Desired
     bool ra;              // Recursion Available
-    uint8_t z;            // Reserved (3 bits) - deve ser 0
-    bool ad;              // Authenticated Data (DNSSEC - Story 3.5)
-    uint8_t rcode;        // Response code (4 bits) - 0 = no error
+    uint8_t z;            // Reservado (3 bits)
+    bool ad;              // Authenticated Data (DNSSEC)
+    uint8_t rcode;        // Response code (4 bits)
     
     // Contadores de seções
     uint16_t qdcount;     // Número de questions
@@ -33,18 +43,18 @@ struct DNSHeader {
           qdcount(0), ancount(0), nscount(0), arcount(0) {}
 };
 
-// Estrutura de uma question DNS
+// Estrutura de uma pergunta DNS
 struct DNSQuestion {
-    std::string qname;    // Nome de domínio (ex: "google.com")
-    uint16_t qtype;       // Tipo de registro (1 = A, 28 = AAAA, etc)
-    uint16_t qclass;      // Classe (1 = IN - Internet)
+    std::string qname;    // Nome de domínio
+    uint16_t qtype;       // Tipo de registro (A, AAAA, etc)
+    uint16_t qclass;      // Classe (IN = Internet)
     
     DNSQuestion() : qtype(0), qclass(0) {}
     
     DNSQuestion(const std::string& name, uint16_t type, uint16_t cls)
         : qname(name), qtype(type), qclass(cls) {}
     
-    // Operador < para permitir uso em std::map (cache)
+    // Operador para uso em std::map (cache)
     bool operator<(const DNSQuestion& other) const {
         if (qname != other.qname) return qname < other.qname;
         if (qtype != other.qtype) return qtype < other.qtype;
@@ -66,23 +76,23 @@ struct SOARecord {
         : serial(0), refresh(0), retry(0), expire(0), minimum(0) {}
 };
 
-// Estrutura para DNSKEY record (DNSSEC - Story 3.2)
+// Estrutura para DNSKEY record (DNSSEC)
 struct DNSKEYRecord {
     uint16_t flags;                  // 256 (ZSK) ou 257 (KSK)
     uint8_t protocol;                // Sempre 3 para DNSSEC
-    uint8_t algorithm;               // 8 (RSA/SHA-256), 13 (ECDSA), etc
+    uint8_t algorithm;               // 8 (RSA/SHA-256), 13 (ECDSA)
     std::vector<uint8_t> public_key; // Chave pública
     
     DNSKEYRecord() : flags(0), protocol(0), algorithm(0) {}
     
-    // Helpers
-    bool isKSK() const { return (flags & 0x0001) != 0; }  // Secure Entry Point flag
+    // Verifica se é Key Signing Key
+    bool isKSK() const { return (flags & 0x0001) != 0; }
     bool isZSK() const { return !isKSK(); }
 };
 
-// Estrutura para DS record (Delegation Signer - Story 3.2)
+// Estrutura para DS record (Delegation Signer)
 struct DSRecord {
-    uint16_t key_tag;              // Identificador da DNSKEY referenciada
+    uint16_t key_tag;              // ID da DNSKEY referenciada
     uint8_t algorithm;             // Algoritmo da DNSKEY
     uint8_t digest_type;           // 1 (SHA-1) ou 2 (SHA-256)
     std::vector<uint8_t> digest;   // Hash da DNSKEY
@@ -90,22 +100,22 @@ struct DSRecord {
     DSRecord() : key_tag(0), algorithm(0), digest_type(0) {}
 };
 
-// Estrutura para opções EDNS0 (Story 3.2)
+// Estrutura para opções EDNS0
 struct EDNSOptions {
     uint16_t udp_size = 4096;      // Tamanho máximo de resposta UDP
-    uint8_t version = 0;            // EDNS version (sempre 0)
+    uint8_t version = 0;            // EDNS version
     bool dnssec_ok = false;         // DO bit (DNSSEC OK)
 };
 
-// Estrutura para RRSIG record (assinatura - Story 3.4)
+// Estrutura para RRSIG record (assinatura DNSSEC)
 struct RRSIGRecord {
-    uint16_t type_covered;         // Tipo do RRset assinado (ex: 1 para A)
+    uint16_t type_covered;         // Tipo do RRset assinado
     uint8_t algorithm;             // 8 (RSA/SHA-256), 13 (ECDSA P-256)
     uint8_t labels;                // Número de labels no owner name
     uint32_t original_ttl;         // TTL original do RRset
     uint32_t signature_expiration; // Unix timestamp
     uint32_t signature_inception;  // Unix timestamp
-    uint16_t key_tag;              // Identifica qual DNSKEY usada
+    uint16_t key_tag;              // ID da DNSKEY usada
     std::string signer_name;       // Nome da zona assinante
     std::vector<uint8_t> signature;  // Assinatura criptográfica
     
@@ -114,7 +124,7 @@ struct RRSIGRecord {
           signature_expiration(0), signature_inception(0), key_tag(0) {}
 };
 
-// Estrutura de um Resource Record (para respostas)
+// Estrutura de um Resource Record DNS
 struct DNSResourceRecord {
     std::string name;
     uint16_t type;
@@ -124,17 +134,17 @@ struct DNSResourceRecord {
     std::vector<uint8_t> rdata;  // Dados brutos
     
     // Campos parsed específicos por tipo
-    std::string rdata_a;         // Tipo A: endereço IPv4 (ex: "8.8.8.8")
+    std::string rdata_a;         // Tipo A: endereço IPv4
     std::string rdata_aaaa;      // Tipo AAAA: endereço IPv6
     std::string rdata_ns;        // Tipo NS: nameserver
     std::string rdata_cname;     // Tipo CNAME: canonical name
     std::string rdata_ptr;       // Tipo PTR: pointer
-    std::string rdata_mx;        // Tipo MX: mail exchange (inclui priority)
+    std::string rdata_mx;        // Tipo MX: mail exchange
     std::string rdata_txt;       // Tipo TXT: texto
     SOARecord rdata_soa;         // Tipo SOA: start of authority
-    DNSKEYRecord rdata_dnskey;   // Tipo DNSKEY: chave pública DNSSEC (Story 3.2)
-    DSRecord rdata_ds;           // Tipo DS: delegation signer (Story 3.2)
-    RRSIGRecord rdata_rrsig;     // Tipo RRSIG: assinatura (Story 3.4)
+    DNSKEYRecord rdata_dnskey;   // Tipo DNSKEY: chave pública DNSSEC
+    DSRecord rdata_ds;           // Tipo DS: delegation signer
+    RRSIGRecord rdata_rrsig;     // Tipo RRSIG: assinatura
     
     DNSResourceRecord()
         : type(0), rr_class(0), ttl(0), rdlength(0) {}
@@ -148,7 +158,7 @@ struct DNSMessage {
     std::vector<DNSResourceRecord> authority;
     std::vector<DNSResourceRecord> additional;
     
-    // EDNS0 support (Story 3.2)
+    // Suporte EDNS0
     bool use_edns = false;          // Se true, adiciona OPT RR
     EDNSOptions edns;                // Opções EDNS0
     
@@ -165,10 +175,10 @@ namespace DNSType {
     constexpr uint16_t MX = 15;      // Mail exchange
     constexpr uint16_t TXT = 16;     // Text record
     constexpr uint16_t AAAA = 28;    // IPv6 address
-    constexpr uint16_t OPT = 41;     // EDNS0 OPT pseudo-RR (Story 3.2)
-    constexpr uint16_t DS = 43;      // Delegation Signer (Story 3.2)
-    constexpr uint16_t RRSIG = 46;   // RRSIG (Signature - Story 3.4)
-    constexpr uint16_t DNSKEY = 48;  // DNS Key (Story 3.2)
+    constexpr uint16_t OPT = 41;     // EDNS0 OPT pseudo-RR
+    constexpr uint16_t DS = 43;      // Delegation Signer
+    constexpr uint16_t RRSIG = 46;   // RRSIG Signature
+    constexpr uint16_t DNSKEY = 48;  // DNS Key
 }
 
 namespace DNSClass {
@@ -186,12 +196,12 @@ namespace DNSRCode {
     constexpr uint8_t NAME_ERROR = 3;
 }
 
-// Resultado de validação DNSSEC (Story 3.3)
+// Resultado de validação DNSSEC
 enum class ValidationResult {
     Secure,         // Cadeia DNSSEC válida
     Insecure,       // Zona não tem DNSSEC (aceitável)
-    Bogus,          // DNSSEC presente mas inválido (ATAQUE!)
-    Indeterminate   // Não foi possível validar (falta dados)
+    Bogus,          // DNSSEC presente mas inválido
+    Indeterminate   // Não foi possível validar
 };
 
 } // namespace dns_resolver

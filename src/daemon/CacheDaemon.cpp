@@ -1,3 +1,13 @@
+/*
+ * ----------------------------------------
+ * Arquivo: CacheDaemon.cpp
+ * Propósito: Implementação do daemon de cache DNS distribuído com IPC
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver Recursivo Validante com Cache e DNSSEC
+ * ----------------------------------------
+ */
+
 #include "CacheDaemon.h"
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -11,6 +21,7 @@ namespace dns_cache {
 const char* CacheDaemon::SOCKET_PATH = "/tmp/dns_cache.sock";
 
 CacheDaemon::CacheDaemon() {
+    // Construtor vazio - inicialização lazy
 }
 
 CacheDaemon::~CacheDaemon() {
@@ -20,7 +31,7 @@ CacheDaemon::~CacheDaemon() {
 void CacheDaemon::run() {
     running_ = true;
     
-    // Criar socket
+    // Criar Unix Domain Socket para IPC
     server_socket_ = createSocket();
     if (server_socket_ < 0) {
         std::cerr << "Failed to create socket" << std::endl;
@@ -32,9 +43,9 @@ void CacheDaemon::run() {
     std::cout << "Positive cache: 0/" << max_positive_entries_ << std::endl;
     std::cout << "Negative cache: 0/" << max_negative_entries_ << std::endl;
     
-    // Loop principal
+    // Loop principal do daemon
     while (running_) {
-        // Aceitar conexão
+        // Aceitar conexão de cliente
         int client_socket = accept(server_socket_, nullptr, nullptr);
         if (client_socket < 0) {
             if (running_) {
@@ -43,15 +54,15 @@ void CacheDaemon::run() {
             continue;
         }
         
-        // Processar cliente
+        // Processar comando do cliente
         handleClient(client_socket);
         close(client_socket);
         
-        // Cleanup periódico
+        // Limpeza periódica de entradas expiradas
         cleanupExpiredEntries();
     }
     
-    // Cleanup
+    // Cleanup final
     close(server_socket_);
     unlink(SOCKET_PATH);
 }
@@ -68,24 +79,25 @@ int CacheDaemon::createSocket() {
     // Remover socket antigo se existir
     unlink(SOCKET_PATH);
     
-    // Criar socket
+    // Criar Unix Domain Socket (AF_UNIX)
     int sock = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sock < 0) {
         return -1;
     }
     
-    // Bind
+    // Configurar endereço do socket
     struct sockaddr_un addr;
     std::memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     std::strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
     
+    // Bind do socket ao arquivo
     if (bind(sock, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
         close(sock);
         return -1;
     }
     
-    // Listen
+    // Colocar socket em modo listen
     if (listen(sock, 5) < 0) {
         close(sock);
         unlink(SOCKET_PATH);
@@ -96,7 +108,7 @@ int CacheDaemon::createSocket() {
 }
 
 void CacheDaemon::handleClient(int client_socket) {
-    // Ler comando (buffer simples)
+    // Ler comando do cliente (buffer simples)
     char buffer[4096];
     ssize_t n = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
     
@@ -107,10 +119,10 @@ void CacheDaemon::handleClient(int client_socket) {
     buffer[n] = '\0';
     std::string command(buffer);
     
-    // Processar comando
+    // Processar comando e gerar resposta
     std::string response = processCommand(command);
     
-    // Enviar resposta
+    // Enviar resposta ao cliente
     send(client_socket, response.c_str(), response.size(), 0);
 }
 
@@ -128,7 +140,7 @@ std::string CacheDaemon::processCommand(const std::string& command) {
         iss >> cmd;
     }
     
-    // QUERY - consultar cache (Story 4.2/4.3)
+    // QUERY - consultar cache 
     if (cmd == "QUERY") {
         // Parsear: QUERY|qname|qtype|qclass
         size_t pos = 0;
@@ -150,30 +162,30 @@ std::string CacheDaemon::processCommand(const std::string& command) {
         question.qtype = std::stoi(parts[2]);
         question.qclass = std::stoi(parts[3]);
         
-        // Buscar no cache
+        // Buscar no cache com lock thread-safe
         std::lock_guard<std::mutex> lock(cache_mutex_);
         
-        // Verificar cache positivo
+        // Verificar cache positivo primeiro
         auto pos_it = positive_cache_.find(question);
         if (pos_it != positive_cache_.end() && !pos_it->second.isExpired()) {
-            // HIT - serializar e retornar
+            // HIT positivo - serializar e retornar
             std::string serialized = serializeMessage(pos_it->second.response);
             return "HIT|" + serialized + "\n";
         }
         
-        // STORY 4.4: Verificar cache negativo
+        // Verificar cache negativo
         auto neg_it = negative_cache_.find(question);
         if (neg_it != negative_cache_.end() && !neg_it->second.isExpired()) {
-            // HIT NEGATIVE - retornar RCODE
+            // HIT negativo - retornar RCODE
             uint8_t rcode = neg_it->second.response.header.rcode;
             return "NEGATIVE|" + std::to_string(static_cast<int>(rcode)) + "\n";
         }
         
-        // MISS em ambos
+        // MISS em ambos os caches
         return "MISS\n";
     }
     
-    // STORE - armazenar resposta (Story 4.3)
+    // STORE - armazenar resposta positiva 
     if (cmd == "STORE") {
         // Parsear: STORE|qname|qtype|qclass|ttl|serialized_data
         // Parsear apenas os primeiros 5 campos, o resto é serialized_data
@@ -201,19 +213,19 @@ std::string CacheDaemon::processCommand(const std::string& command) {
         
         uint32_t ttl = std::stoi(parts[4]);
         
-        // Deserializar resposta
+        // Deserializar resposta DNS
         dns_resolver::DNSMessage response = deserializeMessage(serialized_data);
         
-        // Criar entry
+        // Criar entrada de cache
         CacheEntry entry(response, ttl);
         
-        // Adicionar ao cache (com LRU)
+        // Adicionar ao cache positivo (com política LRU)
         addToCachePositive(question, entry);
         
         return "OK|Stored\n";
     }
     
-    // STORE_NEGATIVE - armazenar resposta negativa (Story 4.4)
+    // STORE_NEGATIVE - armazenar resposta negativa 
     if (cmd == "STORE_NEGATIVE") {
         // Parsear: STORE_NEGATIVE|qname|qtype|qclass|ttl|rcode
         std::vector<std::string> parts;
@@ -251,14 +263,14 @@ std::string CacheDaemon::processCommand(const std::string& command) {
         negative_response.header.rcode = rcode;
         negative_response.header.ancount = 0;
         
-        // Criar entry
+        // Criar entrada de cache negativo
         CacheEntry entry(negative_response, ttl);
         
-        // Adicionar ao cache negativo (com LRU) - já com lock
+        // Adicionar ao cache negativo (com política LRU)
         {
             std::lock_guard<std::mutex> lock(cache_mutex_);
             
-            // Limpar expirados
+            // Limpar entradas expiradas primeiro
             for (auto it = negative_cache_.begin(); it != negative_cache_.end(); ) {
                 if (it->second.isExpired()) {
                     it = negative_cache_.erase(it);
@@ -267,7 +279,7 @@ std::string CacheDaemon::processCommand(const std::string& command) {
                 }
             }
             
-            // LRU se cheio
+            // Aplicar política LRU se cache cheio
             if (negative_cache_.size() >= max_negative_entries_) {
                 auto oldest = negative_cache_.begin();
                 for (auto it = negative_cache_.begin(); it != negative_cache_.end(); ++it) {
@@ -278,7 +290,7 @@ std::string CacheDaemon::processCommand(const std::string& command) {
                 negative_cache_.erase(oldest);
             }
             
-            // Adicionar
+            // Adicionar nova entrada
             negative_cache_[question] = entry;
         }
         
@@ -326,7 +338,7 @@ std::string CacheDaemon::processCommand(const std::string& command) {
         return "ERROR|Invalid purge type\n";
     }
     
-    // LIST - listar entradas
+    // LIST - listar entradas do cache
     if (cmd == "LIST") {
         std::string type;
         iss >> type;
@@ -413,7 +425,7 @@ size_t CacheDaemon::getNegativeCacheSize() const {
 void CacheDaemon::cleanupExpiredEntries() {
     std::lock_guard<std::mutex> lock(cache_mutex_);
     
-    // Cleanup positivo
+    // Limpar cache positivo expirado
     for (auto it = positive_cache_.begin(); it != positive_cache_.end(); ) {
         if (it->second.isExpired()) {
             it = positive_cache_.erase(it);
@@ -422,7 +434,7 @@ void CacheDaemon::cleanupExpiredEntries() {
         }
     }
     
-    // Cleanup negativo
+    // Limpar cache negativo expirado
     for (auto it = negative_cache_.begin(); it != negative_cache_.end(); ) {
         if (it->second.isExpired()) {
             it = negative_cache_.erase(it);
@@ -432,7 +444,7 @@ void CacheDaemon::cleanupExpiredEntries() {
     }
 }
 
-// ========== STORY 4.3: ARMAZENAMENTO E SERIALIZAÇÃO ==========
+// ==========  ARMAZENAMENTO E SERIALIZAÇÃO ==========
 
 void CacheDaemon::addToCachePositive(
     const dns_resolver::DNSQuestion& question,
@@ -440,7 +452,7 @@ void CacheDaemon::addToCachePositive(
 ) {
     std::lock_guard<std::mutex> lock(cache_mutex_);
     
-    // Limpar expirados primeiro
+    // Limpar entradas expiradas primeiro
     for (auto it = positive_cache_.begin(); it != positive_cache_.end(); ) {
         if (it->second.isExpired()) {
             it = positive_cache_.erase(it);
@@ -449,7 +461,7 @@ void CacheDaemon::addToCachePositive(
         }
     }
     
-    // Verificar tamanho - política LRU
+    // Verificar tamanho e aplicar política LRU
     if (positive_cache_.size() >= max_positive_entries_) {
         // Encontrar entrada mais antiga (menor timestamp)
         auto oldest = positive_cache_.begin();
@@ -468,15 +480,15 @@ void CacheDaemon::addToCachePositive(
 std::string CacheDaemon::serializeMessage(const dns_resolver::DNSMessage& msg) const {
     std::ostringstream oss;
     
-    // Header
+    // Serializar header básico
     oss << "rcode:" << static_cast<int>(msg.header.rcode) << ";";
     
-    // Answers (formato: name|type|ttl|rdata##name|type|ttl|rdata)
+    // Serializar answers (formato: name|type|ttl|rdata##name|type|ttl|rdata)
     oss << "answers:";
     
     bool first = true;
     for (const auto& rr : msg.answers) {
-        // Serializar apenas tipos suportados (pular RRSIG por enquanto)
+        // Serializar apenas tipos suportados (pular DNSSEC por enquanto)
         if (rr.type == dns_resolver::DNSType::RRSIG || 
             rr.type == dns_resolver::DNSType::DNSKEY || 
             rr.type == dns_resolver::DNSType::DS ||
@@ -491,7 +503,7 @@ std::string CacheDaemon::serializeMessage(const dns_resolver::DNSMessage& msg) c
         
         oss << rr.name << "|" << rr.type << "|" << rr.ttl << "|";
         
-        // RDATA baseado no tipo
+        // Serializar RDATA baseado no tipo
         if (rr.type == dns_resolver::DNSType::A && !rr.rdata_a.empty()) {
             oss << rr.rdata_a;
         } else if (rr.type == dns_resolver::DNSType::NS && !rr.rdata_ns.empty()) {
@@ -532,13 +544,14 @@ dns_resolver::DNSMessage CacheDaemon::deserializeMessage(const std::string& data
             msg.header.rcode = std::stoi(value);
             msg.header.qr = true;
         } else if (key == "answers") {
-            // Parsear answers
+            // Parsear answers (formato: name|type|ttl|rdata##name|type|ttl|rdata)
             std::istringstream ans_stream(value);
             std::string rr_str;
             
             while (std::getline(ans_stream, rr_str, '#')) {
                 if (rr_str.empty() || rr_str == "#") continue;
                 
+                // Parsear RR individual (name|type|ttl|rdata)
                 std::istringstream rr_stream(rr_str);
                 std::string rr_field;
                 std::vector<std::string> rr_parts;
@@ -554,6 +567,7 @@ dns_resolver::DNSMessage CacheDaemon::deserializeMessage(const std::string& data
                     rr.ttl = std::stoi(rr_parts[2]);
                     rr.rr_class = dns_resolver::DNSClass::IN;
                     
+                    // Deserializar RDATA baseado no tipo
                     if (rr.type == dns_resolver::DNSType::A) {
                         rr.rdata_a = rr_parts[3];
                     } else if (rr.type == dns_resolver::DNSType::NS) {
@@ -570,6 +584,7 @@ dns_resolver::DNSMessage CacheDaemon::deserializeMessage(const std::string& data
         }
     }
     
+    // Atualizar contadores do header
     msg.header.ancount = msg.answers.size();
     msg.header.qdcount = 1;  // Sempre 1 question
     

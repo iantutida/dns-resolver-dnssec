@@ -1,3 +1,13 @@
+/*
+ * ----------------------------------------
+ * Arquivo: main.cpp (resolver)
+ * Propósito: Interface de linha de comando para o DNS resolver recursivo com DNSSEC
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver Recursivo Validante com Cache e DNSSEC
+ * ----------------------------------------
+ */
+
 #include "dns_resolver/types.h"
 #include "dns_resolver/DNSParser.h"
 #include "dns_resolver/NetworkModule.h"
@@ -16,9 +26,7 @@ using namespace dns_resolver;
 // Versão do projeto
 const char* VERSION = "1.0.0";
 
-/**
- * Gera um ID de transação aleatório para a query DNS
- */
+// Gera ID de transação aleatório para queries DNS
 uint16_t generateTransactionID() {
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -26,9 +34,7 @@ uint16_t generateTransactionID() {
     return dis(gen);
 }
 
-/**
- * Imprime um buffer em formato hexadecimal (para debug)
- */
+// Imprime buffer em formato hexadecimal para debug
 void printHex(const std::vector<uint8_t>& buffer) {
     std::cout << "Buffer (hex): ";
     for (size_t i = 0; i < buffer.size(); ++i) {
@@ -39,9 +45,7 @@ void printHex(const std::vector<uint8_t>& buffer) {
     std::cout << std::dec << "\n";
 }
 
-/**
- * Formata bytes em hex (para exibir digest/keys)
- */
+// Formata bytes em hexadecimal para exibir digest/chaves
 std::string formatHex(const std::vector<uint8_t>& data, size_t max_bytes = 16) {
     std::ostringstream oss;
     size_t limit = std::min(data.size(), max_bytes);
@@ -55,9 +59,7 @@ std::string formatHex(const std::vector<uint8_t>& data, size_t max_bytes = 16) {
     return oss.str();
 }
 
-/**
- * Retorna nome legível de um RCODE
- */
+// Retorna nome legível de um RCODE DNS
 std::string getRCodeName(uint8_t rcode) {
     switch (rcode) {
         case 0: return "NO ERROR";
@@ -70,9 +72,7 @@ std::string getRCodeName(uint8_t rcode) {
     }
 }
 
-/**
- * Retorna nome legível de um tipo DNS
- */
+// Retorna nome legível de um tipo DNS
 std::string getTypeName(uint16_t type) {
     switch (type) {
         case DNSType::A: return "A";
@@ -90,14 +90,12 @@ std::string getTypeName(uint16_t type) {
     }
 }
 
-/**
- * Imprime um resource record formatado
- */
+// Imprime resource record formatado
 void printResourceRecord(const DNSResourceRecord& rr) {
     std::cout << "    " << rr.name << " ";
     std::cout << rr.ttl << "s ";
     
-    // Tipo
+    // Tipo do registro
     switch (rr.type) {
         case DNSType::A: std::cout << "A "; break;
         case DNSType::NS: std::cout << "NS "; break;
@@ -113,7 +111,7 @@ void printResourceRecord(const DNSResourceRecord& rr) {
         default: std::cout << "TYPE" << rr.type << " "; break;
     }
     
-    // RDATA
+    // RDATA baseado no tipo
     if (rr.type == DNSType::A && !rr.rdata_a.empty()) {
         std::cout << rr.rdata_a;
     } else if (rr.type == DNSType::NS && !rr.rdata_ns.empty()) {
@@ -152,9 +150,7 @@ void printResourceRecord(const DNSResourceRecord& rr) {
     std::cout << "\n";
 }
 
-/**
- * Constrói, envia e parseia uma query DNS completa
- */
+// Constrói, envia e parseia uma query DNS completa
 void testDNSQuery(const std::string& server, const std::string& domain, uint16_t qtype) {
     std::cout << "\n========== TESTE DE QUERY DNS ==========\n";
     std::cout << "Servidor: " << server << "\n";
@@ -167,10 +163,10 @@ void testDNSQuery(const std::string& server, const std::string& domain, uint16_t
     std::cout << ")\n\n";
     
     try {
-        // 1. Construir a mensagem DNS
+        // Construir mensagem DNS
         DNSMessage query;
         
-        // Configurar o header
+        // Configurar header
         query.header.id = generateTransactionID();
         query.header.qr = false;                    // Query
         query.header.opcode = DNSOpcode::QUERY;     // Standard query
@@ -185,29 +181,29 @@ void testDNSQuery(const std::string& server, const std::string& domain, uint16_t
         query.header.nscount = 0;
         query.header.arcount = 0;
         
-        // Adicionar a question
+        // Adicionar question
         query.questions.emplace_back(domain, qtype, DNSClass::IN);
         
         std::cout << "✓ Mensagem DNS construída\n";
         std::cout << "  Transaction ID: 0x" << std::hex << query.header.id << std::dec << "\n\n";
         
-        // 2. Serializar a mensagem
+        // Serializar mensagem
         std::vector<uint8_t> query_buffer = DNSParser::serialize(query);
         
         std::cout << "✓ Query serializada (" << query_buffer.size() << " bytes)\n\n";
         
-        // 3. Enviar via UDP e receber resposta
+        // Enviar via UDP e receber resposta
         std::cout << "Enviando query e aguardando resposta...\n";
         std::vector<uint8_t> response_buffer = NetworkModule::queryUDP(server, query_buffer, 5);
         
         std::cout << "✓ Resposta recebida (" << response_buffer.size() << " bytes)\n\n";
         
-        // 4. Parsear a resposta
+        // Parsear resposta
         DNSMessage response = DNSParser::parse(response_buffer);
         
         std::cout << "✓ Resposta parseada com sucesso!\n\n";
         
-        // 5. Validar resposta
+        // Validar resposta
         if (response.header.id != query.header.id) {
             std::cerr << "⚠️  AVISO: ID da resposta não corresponde (query=0x" 
                       << std::hex << query.header.id << ", response=0x" 
@@ -218,7 +214,7 @@ void testDNSQuery(const std::string& server, const std::string& domain, uint16_t
             std::cerr << "⚠️  AVISO: QR=0 (esperado QR=1 para resposta)\n\n";
         }
         
-        // 6. Mostrar informações da resposta
+        // Mostrar informações da resposta
         std::cout << "========== RESPOSTA DNS ==========\n\n";
         
         // Flags

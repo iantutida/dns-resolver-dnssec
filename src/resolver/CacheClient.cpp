@@ -1,3 +1,13 @@
+/*
+ * ----------------------------------------
+ * Arquivo: CacheClient.cpp
+ * Propósito: Implementação do cliente IPC para comunicação com daemon de cache DNS
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver Recursivo Validante com Cache e DNSSEC
+ * ----------------------------------------
+ */
+
 #include "dns_resolver/CacheClient.h"
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -68,7 +78,7 @@ std::unique_ptr<DNSMessage> CacheClient::query(
         return nullptr;
     }
     
-    // STORY 4.4: Verificar se é NEGATIVE (resposta negativa cacheada)
+    // Verificar se é NEGATIVE (resposta negativa cacheada)
     if (response.size() >= 8 && response.substr(0, 8) == "NEGATIVE") {
         // Formato: NEGATIVE|rcode
         size_t delimiter_pos = response.find('|');
@@ -171,7 +181,7 @@ std::unique_ptr<DNSMessage> CacheClient::parseHitResponse(const std::string& res
     }
 }
 
-// ========== STORY 4.3: SERIALIZAÇÃO ==========
+// ========== SERIALIZAÇÃO ==========
 
 std::string CacheClient::serializeForCache(const DNSMessage& msg) const {
     std::ostringstream oss;
@@ -344,7 +354,7 @@ bool CacheClient::store(
     return false;
 }
 
-// ========== STORY 4.4: CACHE NEGATIVO ==========
+// ========== CACHE NEGATIVO ==========
 
 bool CacheClient::storeNegative(
     const std::string& qname,

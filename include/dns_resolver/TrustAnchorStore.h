@@ -1,3 +1,13 @@
+/*
+ * ----------------------------------------
+ * Arquivo: TrustAnchorStore.h
+ * Propósito: Gerenciamento de trust anchors DNSSEC para validação de cadeia de confiança
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver Recursivo Validante com Cache e DNSSEC
+ * ----------------------------------------
+ */
+
 #ifndef TRUST_ANCHOR_STORE_H
 #define TRUST_ANCHOR_STORE_H
 
@@ -8,21 +18,17 @@
 
 namespace dns_resolver {
 
-/**
- * Trust Anchor (Âncora de Confiança) - representa um DS record
- * usado como ponto inicial da cadeia de confiança DNSSEC.
- */
+// Trust Anchor (Âncora de Confiança) - representa um DS record
+// usado como ponto inicial da cadeia de confiança DNSSEC
 struct TrustAnchor {
     std::string zone;              // Nome da zona (ex: "." para root)
-    uint16_t key_tag;              // Identificador da chave (ex: 20326)
+    uint16_t key_tag;              // Identificador da chave
     uint8_t algorithm;             // Algoritmo criptográfico (8=RSA/SHA-256)
     uint8_t digest_type;           // Tipo de hash (2=SHA-256, 1=SHA-1)
     std::vector<uint8_t> digest;   // Hash da DNSKEY pública
 };
 
-/**
- * Gerencia trust anchors carregados de arquivo ou hardcoded.
- */
+// Gerencia trust anchors carregados de arquivo ou hardcoded
 class TrustAnchorStore {
 public:
     TrustAnchorStore();

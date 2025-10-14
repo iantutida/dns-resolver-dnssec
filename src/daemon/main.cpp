@@ -1,3 +1,13 @@
+/*
+ * ----------------------------------------
+ * Arquivo: main.cpp (daemon)
+ * Propósito: Interface de linha de comando para gerenciamento do daemon de cache DNS
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver Recursivo Validante com Cache e DNSSEC
+ * ----------------------------------------
+ */
+
 #include "CacheDaemon.h"
 #include <iostream>
 #include <fstream>
@@ -10,11 +20,7 @@
 const char* PID_FILE = "/tmp/dns_cache.pid";
 const char* SOCKET_PATH = "/tmp/dns_cache.sock";
 
-/**
- * Envia comando ao daemon via Unix socket
- * @param command Comando a enviar
- * @return Resposta do daemon
- */
+// Envia comando ao daemon via Unix socket
 std::string sendCommand(const std::string& command) {
     // Conectar ao socket
     int sock = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -48,9 +54,7 @@ std::string sendCommand(const std::string& command) {
     return std::string(buffer);
 }
 
-/**
- * Parse resposta do daemon (formato: OK|message ou ERROR|message)
- */
+// Parse resposta do daemon (formato: OK|message ou ERROR|message)
 void parseResponse(const std::string& response) {
     size_t pos = response.find('|');
     if (pos == std::string::npos) {
@@ -68,9 +72,7 @@ void parseResponse(const std::string& response) {
     }
 }
 
-/**
- * Ativa o daemon (fork para background)
- */
+// Ativa o daemon (fork para background)
 void activate() {
     // Verificar se já está rodando
     std::ifstream check_pidfile(PID_FILE);
@@ -122,9 +124,7 @@ void activate() {
     unlink(PID_FILE);
 }
 
-/**
- * Desativa o daemon (envia SIGTERM)
- */
+// Desativa o daemon (envia SIGTERM)
 void deactivate() {
     std::ifstream pidfile(PID_FILE);
     if (!pidfile.is_open()) {
@@ -150,9 +150,7 @@ void deactivate() {
     }
 }
 
-/**
- * Verifica status do daemon
- */
+// Verifica status do daemon
 void status() {
     std::ifstream pidfile(PID_FILE);
     if (!pidfile.is_open()) {
@@ -177,33 +175,25 @@ void status() {
     }
 }
 
-/**
- * Limpa todo o cache
- */
+// Limpa todo o cache
 void flush() {
     std::string response = sendCommand("FLUSH");
     parseResponse(response);
 }
 
-/**
- * Lista cache
- */
+// Lista cache
 void list(const std::string& type) {
     std::string response = sendCommand("LIST " + type);
     parseResponse(response);
 }
 
-/**
- * Purge cache
- */
+// Purge cache
 void purge(const std::string& type) {
     std::string response = sendCommand("PURGE " + type);
     parseResponse(response);
 }
 
-/**
- * Configura tamanho de cache
- */
+// Configura tamanho de cache
 void setCache(const std::string& type, size_t size) {
     std::string cmd;
     if (type == "positive") {
@@ -219,9 +209,7 @@ void setCache(const std::string& type, size_t size) {
     parseResponse(response);
 }
 
-/**
- * Mostra ajuda
- */
+// Mostra ajuda
 void showHelp(const char* prog_name) {
     std::cout << "Cache Daemon - DNS Cache Management\n\n";
     std::cout << "USAGE:\n\n";

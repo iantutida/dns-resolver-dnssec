@@ -1,3 +1,13 @@
+/*
+ * ----------------------------------------
+ * Arquivo: ThreadPool.h
+ * Propósito: Pool de threads para processamento paralelo de tarefas DNS
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver Recursivo Validante com Cache e DNSSEC
+ * ----------------------------------------
+ */
+
 #pragma once
 
 #include <functional>
@@ -11,27 +21,18 @@
 
 namespace dns_resolver {
 
-/**
- * ThreadPool simples para processamento paralelo de tarefas
- * 
- * Uso:
- *   ThreadPool pool(4);  // 4 workers
- *   auto result = pool.enqueue([](int x) { return x * 2; }, 42);
- *   std::cout << result.get() << std::endl;  // 84
- */
+// Pool de threads para execução paralela de queries DNS
+// Utilizado para fan-out paralelo e processamento batch
 class ThreadPool {
 public:
-    /**
-     * Cria thread pool com N workers
-     * @param num_threads Número de threads (default: hardware concurrency)
-     */
+    // Constrói pool com número específico de workers
     explicit ThreadPool(size_t num_threads = std::thread::hardware_concurrency())
         : stop_(false) {
         if (num_threads == 0) {
             num_threads = 1;
         }
         
-        // Criar workers
+        // Criar workers que ficam aguardando tarefas
         for (size_t i = 0; i < num_threads; ++i) {
             workers_.emplace_back([this] {
                 while (true) {
@@ -39,6 +40,7 @@ public:
                     
                     {
                         std::unique_lock<std::mutex> lock(queue_mutex_);
+                        // Aguardar tarefa ou sinal de parada
                         condition_.wait(lock, [this] {
                             return stop_ || !tasks_.empty();
                         });
@@ -57,9 +59,7 @@ public:
         }
     }
     
-    /**
-     * Destrutor: aguarda todas as tarefas completarem
-     */
+    // Destrutor: para workers e aguarda conclusão
     ~ThreadPool() {
         {
             std::unique_lock<std::mutex> lock(queue_mutex_);
@@ -75,16 +75,11 @@ public:
         }
     }
     
-    // Não copiável
+    // Não permite cópia
     ThreadPool(const ThreadPool&) = delete;
     ThreadPool& operator=(const ThreadPool&) = delete;
     
-    /**
-     * Enfileira tarefa para execução
-     * @param f Função a executar
-     * @param args Argumentos da função
-     * @return std::future com resultado da função
-     */
+    // Enfileira função para execução paralela
     template<typename F, typename... Args>
     auto enqueue(F&& f, Args&&... args) 
         -> std::future<typename std::invoke_result<F, Args...>::type> {
@@ -110,28 +105,24 @@ public:
         return result;
     }
     
-    /**
-     * Retorna número de workers
-     */
+    // Retorna número de workers ativos
     size_t size() const {
         return workers_.size();
     }
     
-    /**
-     * Retorna número de tarefas pendentes
-     */
+    // Retorna número de tarefas na fila
     size_t pending() const {
         std::unique_lock<std::mutex> lock(queue_mutex_);
         return tasks_.size();
     }
 
 private:
-    std::vector<std::thread> workers_;
-    std::queue<std::function<void()>> tasks_;
+    std::vector<std::thread> workers_;           // Threads workers
+    std::queue<std::function<void()>> tasks_;    // Fila de tarefas
     
-    mutable std::mutex queue_mutex_;
-    std::condition_variable condition_;
-    bool stop_;
+    mutable std::mutex queue_mutex_;             // Mutex para sincronização
+    std::condition_variable condition_;          // Condição para notificar workers
+    bool stop_;                                  // Flag de parada
 };
 
 } // namespace dns_resolver

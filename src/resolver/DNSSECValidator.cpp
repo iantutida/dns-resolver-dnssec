@@ -1,3 +1,13 @@
+/*
+ * ----------------------------------------
+ * Arquivo: DNSSECValidator.cpp
+ * Propósito: Implementação do validador de cadeia de confiança DNSSEC e assinaturas criptográficas
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver Recursivo Validante com Cache e DNSSEC
+ * ----------------------------------------
+ */
+
 #include "dns_resolver/DNSSECValidator.h"
 #include "dns_resolver/DNSParser.h"
 #include <openssl/sha.h>
@@ -21,7 +31,7 @@ DNSSECValidator::DNSSECValidator(
 ) : trust_anchors_(trust_anchors), trace_enabled_(trace_enabled) {
 }
 
-// ========== CÁLCULO DE KEY TAG (RFC 4034 Appendix B) ==========
+// ========== CÁLCULO DE KEY TAG ==========
 
 uint16_t DNSSECValidator::calculateKeyTag(const DNSKEYRecord& dnskey) {
     std::vector<uint8_t> rdata;
@@ -337,7 +347,7 @@ std::string DNSSECValidator::toLowercase(const std::string& str) const {
     return result;
 }
 
-// ========== STORY 3.4: VALIDAÇÃO DE RRSIG ==========
+// ========== VALIDAÇÃO DE RRSIG ==========
 
 bool DNSSECValidator::validateRRSIG(
     const std::vector<DNSResourceRecord>& rrset,
@@ -513,7 +523,7 @@ std::vector<uint8_t> DNSSECValidator::buildVerificationBuffer(
     return buffer;
 }
 
-// ========== STORY 3.6: ALGORITMOS CRIPTOGRÁFICOS ==========
+// ========== ALGORITMOS CRIPTOGRÁFICOS ==========
 
 // RAII Guard para EVP_PKEY
 struct PKEYGuard {

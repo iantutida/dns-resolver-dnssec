@@ -1,3 +1,13 @@
+/*
+ * ----------------------------------------
+ * Arquivo: TrustAnchorStore.cpp
+ * Propósito: Implementação do gerenciamento de trust anchors DNSSEC
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver Recursivo Validante com Cache e DNSSEC
+ * ----------------------------------------
+ */
+
 #include "dns_resolver/TrustAnchorStore.h"
 #include <fstream>
 #include <sstream>

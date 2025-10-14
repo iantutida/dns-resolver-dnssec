@@ -36,6 +36,7 @@ struct ResolverConfig {
     std::string trust_anchor_file;          // Arquivo trust anchor (Story 3.1)
     bool dnssec_enabled = false;            // Ativar validação DNSSEC (Story 3.2)
     bool quiet_mode = false;                // Modo quiet (Story 5.1 - suprimir logs)
+    bool fanout_enabled = false;            // Fan-out paralelo (Story 6.2)
     
     ResolverConfig() {
         // Root servers padrão (primeiros 5 dos 13 root servers)
@@ -246,6 +247,20 @@ private:
      * @param server Servidor que tem DS para essa zona (zona pai)
      */
     void collectDS(const std::string& zone, const std::string& server);
+    
+    /**
+     * Consulta múltiplos servidores em paralelo (fan-out) - Story 6.2
+     * @param servers Lista de IPs de servidores
+     * @param domain Domínio a consultar
+     * @param qtype Tipo de registro
+     * @return Primeira resposta válida recebida
+     * @throws std::runtime_error se nenhum servidor responder
+     */
+    DNSMessage queryServersFanout(
+        const std::vector<std::string>& servers,
+        const std::string& domain,
+        uint16_t qtype
+    );
     
     // Constantes
     static const int MAX_CNAME_DEPTH = 10;  // Limite de saltos CNAME

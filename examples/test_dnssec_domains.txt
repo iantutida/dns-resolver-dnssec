@@ -1,0 +1,6 @@
+# Domains with DNSSEC support for testing
+# Use with: ./build/resolver --batch test_dnssec_domains.txt --dnssec
+
+cloudflare.com
+cisco.com
+```

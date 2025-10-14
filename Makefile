@@ -27,6 +27,7 @@ TARGET_TEST_DOT = $(TESTBINDIR)/test_dot
 TARGET_TEST_TRUST_ANCHOR = $(TESTBINDIR)/test_trust_anchor_store
 TARGET_TEST_DNSSEC = $(TESTBINDIR)/test_dnssec_records
 TARGET_TEST_VALIDATOR = $(TESTBINDIR)/test_dnssec_validator
+TARGET_TEST_THREADPOOL = $(TESTBINDIR)/test_thread_pool
 
 # Arquivos fonte (exceto main.cpp para permitir múltiplos targets depois)
 SOURCES_LIB = $(SRCDIR)/DNSParser.cpp $(SRCDIR)/NetworkModule.cpp $(SRCDIR)/ResolverEngine.cpp $(SRCDIR)/TrustAnchorStore.cpp $(SRCDIR)/DNSSECValidator.cpp $(SRCDIR)/CacheClient.cpp
@@ -47,7 +48,7 @@ all: $(TARGET_RESOLVER) $(TARGET_DAEMON)
 	@echo "  Cache Daemon: ./$(TARGET_DAEMON)"
 
 # Testes unitários
-test-unit: $(TARGET_TEST_PARSER) $(TARGET_TEST_NETWORK) $(TARGET_TEST_RESPONSE) $(TARGET_TEST_RESOLVER) $(TARGET_TEST_TCP_FRAMING) $(TARGET_TEST_DOT) $(TARGET_TEST_TRUST_ANCHOR) $(TARGET_TEST_DNSSEC) $(TARGET_TEST_VALIDATOR)
+test-unit: $(TARGET_TEST_PARSER) $(TARGET_TEST_NETWORK) $(TARGET_TEST_RESPONSE) $(TARGET_TEST_RESOLVER) $(TARGET_TEST_TCP_FRAMING) $(TARGET_TEST_DOT) $(TARGET_TEST_TRUST_ANCHOR) $(TARGET_TEST_DNSSEC) $(TARGET_TEST_VALIDATOR) $(TARGET_TEST_THREADPOOL)
 	@echo "\n=========================================="
 	@echo "  EXECUTANDO TESTES UNITÁRIOS"
 	@echo "==========================================\n"
@@ -60,6 +61,7 @@ test-unit: $(TARGET_TEST_PARSER) $(TARGET_TEST_NETWORK) $(TARGET_TEST_RESPONSE) 
 	@./$(TARGET_TEST_TRUST_ANCHOR)
 	@./$(TARGET_TEST_DNSSEC)
 	@./$(TARGET_TEST_VALIDATOR)
+	@./$(TARGET_TEST_THREADPOOL)
 	@echo "\n=========================================="
 	@echo "  ✅ TODOS OS TESTES UNITÁRIOS PASSARAM"
 	@echo "==========================================\n"
@@ -107,6 +109,11 @@ $(TARGET_TEST_DNSSEC): $(OBJECTS_LIB) $(TESTDIR)/test_dnssec_records.cpp
 $(TARGET_TEST_VALIDATOR): $(OBJECTS_LIB) $(TESTDIR)/test_dnssec_validator.cpp
 	@mkdir -p $(@D)
 	$(CXX) $(CXXFLAGS) -o $@ $(TESTDIR)/test_dnssec_validator.cpp $(OBJECTS_LIB) $(LDFLAGS)
+	@echo "✓ Teste compilado: $@"
+
+$(TARGET_TEST_THREADPOOL): $(TESTDIR)/test_thread_pool.cpp
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) -o $@ $(TESTDIR)/test_thread_pool.cpp $(LDFLAGS)
 	@echo "✓ Teste compilado: $@"
 
 $(TARGET_RESOLVER): $(OBJECTS_LIB) $(OBJECTS_MAIN)

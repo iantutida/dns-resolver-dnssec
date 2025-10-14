@@ -1,0 +1,14 @@
+# Arquivo de teste para batch processing (Story 6.1)
+# Um domínio por linha
+
+google.com
+cloudflare.com
+github.com
+example.com
+facebook.com
+twitter.com
+reddit.com
+stackoverflow.com
+amazon.com
+apple.com
+

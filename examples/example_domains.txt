@@ -1,0 +1,28 @@
+# DNS Resolver - Example Domains for Batch Processing
+# This file contains a list of domains for testing batch processing
+# One domain per line. Lines starting with # are comments and will be ignored.
+
+# Popular websites
+google.com
+github.com
+stackoverflow.com
+reddit.com
+wikipedia.org
+
+# Tech companies
+microsoft.com
+apple.com
+amazon.com
+facebook.com
+twitter.com
+
+# CDN providers
+cloudflare.com
+akamai.com
+fastly.com
+
+# Cloud providers
+aws.amazon.com
+cloud.google.com
+azure.microsoft.com
+

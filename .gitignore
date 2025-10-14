@@ -5,8 +5,8 @@ build/
 *.exe
 
 # Compiled binaries
-resolver
-cache_daemon
+/resolver
+/cache_daemon
 
 # Debug files
 *.dSYM/

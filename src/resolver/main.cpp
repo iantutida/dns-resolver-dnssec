@@ -205,13 +205,13 @@ void testDNSQuery(const std::string& server, const std::string& domain, uint16_t
         
         // Validar resposta
         if (response.header.id != query.header.id) {
-            std::cerr << "⚠️  AVISO: ID da resposta não corresponde (query=0x" 
+            std::cerr << "  AVISO: ID da resposta não corresponde (query=0x" 
                       << std::hex << query.header.id << ", response=0x" 
                       << response.header.id << std::dec << ")\n\n";
         }
         
         if (!response.header.qr) {
-            std::cerr << "⚠️  AVISO: QR=0 (esperado QR=1 para resposta)\n\n";
+            std::cerr << "  AVISO: QR=0 (esperado QR=1 para resposta)\n\n";
         }
         
         // Mostrar informações da resposta
@@ -266,7 +266,7 @@ void testDNSQuery(const std::string& server, const std::string& domain, uint16_t
         std::cout << "===================================\n\n";
         
     } catch (const std::exception& e) {
-        std::cerr << "❌ ERRO: " << e.what() << "\n";
+        std::cerr << " ERRO: " << e.what() << "\n";
         std::cerr << "=========================================\n";
     }
 }
@@ -340,11 +340,11 @@ void queryDoTDirect(
         std::cout << "============================================\n\n";
         
         if (response.header.rcode != 0) {
-            std::cout << "❌ Error: " << getRCodeName(response.header.rcode) << "\n\n";
+            std::cout << " Error: " << getRCodeName(response.header.rcode) << "\n\n";
         } else if (response.answers.empty()) {
-            std::cout << "⚠️  No answer records\n\n";
+            std::cout << "  No answer records\n\n";
         } else {
-            std::cout << "✅ SUCCESS - Records found\n\n";
+            std::cout << " SUCCESS - Records found\n\n";
             std::cout << "ANSWER SECTION (" << response.answers.size() << " records):\n";
             for (const auto& rr : response.answers) {
                 printResourceRecord(rr);
@@ -355,7 +355,7 @@ void queryDoTDirect(
         std::cout << "============================================\n\n";
         
     } catch (const std::exception& e) {
-        std::cerr << "\n❌ ERRO DoT: " << e.what() << "\n";
+        std::cerr << "\n ERRO DoT: " << e.what() << "\n";
         std::cerr << "============================================\n";
     }
 }
@@ -506,7 +506,7 @@ void resolveRecursive(
                 return;
             }
             
-            std::cout << "❌ Domain does not exist (NXDOMAIN)\n\n";
+            std::cout << " Domain does not exist (NXDOMAIN)\n\n";
             std::cout << "The domain '" << domain << "' was not found.\n";
             std::cout << "This means the domain is not registered or does not exist.\n\n";
             
@@ -515,10 +515,10 @@ void resolveRecursive(
                 std::cout << "DNSSEC:\n";
                 if (response.header.ad) {
                     std::cout << "  Status: Secure (AD=1)\n";
-                    std::cout << "  🔒 Negative response authenticated via DNSSEC\n\n";
+                    std::cout << "   Negative response authenticated via DNSSEC\n\n";
                 } else {
                     std::cout << "  Status: Insecure/Unverified (AD=0)\n";
-                    std::cout << "  ⚠️  Negative response not authenticated\n\n";
+                    std::cout << "    Negative response not authenticated\n\n";
                 }
             }
             
@@ -544,7 +544,7 @@ void resolveRecursive(
                 return;
             }
             
-            std::cout << "⚠️  No data found (NODATA)\n\n";
+            std::cout << "  No data found (NODATA)\n\n";
             std::cout << "The domain '" << domain << "' exists,\n";
             std::cout << "but has no records of type " << getTypeName(qtype) << ".\n\n";
             std::cout << "This means:\n";
@@ -556,10 +556,10 @@ void resolveRecursive(
                 std::cout << "DNSSEC:\n";
                 if (response.header.ad) {
                     std::cout << "  Status: Secure (AD=1)\n";
-                    std::cout << "  🔒 Negative response authenticated via DNSSEC\n\n";
+                    std::cout << "   Negative response authenticated via DNSSEC\n\n";
                 } else {
                     std::cout << "  Status: Insecure/Unverified (AD=0)\n";
-                    std::cout << "  ⚠️  Negative response not authenticated\n\n";
+                    std::cout << "    Negative response not authenticated\n\n";
                 }
             }
             
@@ -585,7 +585,7 @@ void resolveRecursive(
             return;
         }
         
-        std::cout << "✅ SUCCESS - Records found\n\n";
+        std::cout << " SUCCESS - Records found\n\n";
         
         // Flags (apenas se não for resposta negativa)
         std::cout << "Flags:\n";
@@ -599,10 +599,10 @@ void resolveRecursive(
             std::cout << "DNSSEC:\n";
             if (response.header.ad) {
                 std::cout << "  Status: Secure (AD=1)\n";
-                std::cout << "  🔒 Data authenticated via DNSSEC\n";
+                std::cout << "   Data authenticated via DNSSEC\n";
             } else {
                 std::cout << "  Status: Insecure/Unverified (AD=0)\n";
-                std::cout << "  ⚠️  No DNSSEC authentication\n";
+                std::cout << "    No DNSSEC authentication\n";
             }
             std::cout << "\n";
         }
@@ -644,7 +644,7 @@ void resolveRecursive(
         std::cout << "============================================\n\n";
         
     } catch (const std::exception& e) {
-        std::cerr << "\n❌ ERRO: " << e.what() << "\n";
+        std::cerr << "\n ERRO: " << e.what() << "\n";
         std::cerr << "============================================\n";
     }
 }

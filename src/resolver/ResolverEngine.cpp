@@ -102,20 +102,20 @@ DNSMessage ResolverEngine::resolve(const std::string& domain, uint16_t qtype) {
             
             // Mapear ValidationResult → AD bit
             if (validation == ValidationResult::Secure) {
-                traceLog("🔒 DNSSEC Status: SECURE");
+                traceLog(" DNSSEC Status: SECURE");
                 result.header.ad = true;
                 traceLog("Setting AD=1 (authenticated data)");
             } else if (validation == ValidationResult::Insecure) {
-                traceLog("⚠️  DNSSEC Status: INSECURE (zone not signed)");
+                traceLog("  DNSSEC Status: INSECURE (zone not signed)");
                 result.header.ad = false;
                 traceLog("Keeping AD=0 (zone unsigned)");
             } else if (validation == ValidationResult::Bogus) {
-                traceLog("❌ DNSSEC Status: BOGUS (validation failed - possible attack!)");
+                traceLog(" DNSSEC Status: BOGUS (validation failed - possible attack!)");
                 result.header.ad = false;
                 traceLog("Keeping AD=0 (bogus)");
                 throw std::runtime_error("DNSSEC validation failed!");
             } else {
-                traceLog("❓ DNSSEC Status: INDETERMINATE (insufficient data)");
+                traceLog(" DNSSEC Status: INDETERMINATE (insufficient data)");
                 result.header.ad = false;
                 traceLog("Keeping AD=0 (indeterminate)");
             }

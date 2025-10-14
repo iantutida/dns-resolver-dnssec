@@ -42,7 +42,7 @@ std::unique_ptr<DNSMessage> CacheClient::query(
     int sockfd;
     if (!connectToCache(sockfd, 1000)) {
         daemon_available_ = false;
-        traceLog("⚠️  Cache daemon unavailable (will use full resolution)");
+        traceLog("  Cache daemon unavailable (will use full resolution)");
         return nullptr;
     }
     
@@ -59,7 +59,7 @@ std::unique_ptr<DNSMessage> CacheClient::query(
     
     // Enviar comando
     if (!sendCommand(sockfd, command)) {
-        traceLog("⚠️  Failed to send query to cache");
+        traceLog("  Failed to send query to cache");
         return nullptr;
     }
     
@@ -67,7 +67,7 @@ std::unique_ptr<DNSMessage> CacheClient::query(
     std::string response = receiveResponse(sockfd);
     
     if (response.empty()) {
-        traceLog("⚠️  Empty response from cache");
+        traceLog("  Empty response from cache");
         return nullptr;
     }
     
@@ -87,7 +87,7 @@ std::unique_ptr<DNSMessage> CacheClient::query(
             uint8_t rcode = std::stoi(rcode_str);
             
             std::string type = (rcode == 3) ? "NXDOMAIN" : "NODATA";
-            traceLog("✅ Cache HIT (NEGATIVE): " + type);
+            traceLog(" Cache HIT (NEGATIVE): " + type);
             
             // Criar DNSMessage com resposta negativa
             auto negative_msg = std::make_unique<DNSMessage>();
@@ -102,7 +102,7 @@ std::unique_ptr<DNSMessage> CacheClient::query(
     
     // Verificar se é HIT (resposta positiva)
     if (response.size() >= 3 && response.substr(0, 3) == "HIT") {
-        traceLog("✅ Cache HIT");
+        traceLog(" Cache HIT");
         // Extrair dados após "HIT|"
         size_t delimiter_pos = response.find('|');
         if (delimiter_pos != std::string::npos) {
@@ -112,7 +112,7 @@ std::unique_ptr<DNSMessage> CacheClient::query(
     }
     
     // Resposta inesperada
-    traceLog("⚠️  Unexpected cache response: " + response.substr(0, 20));
+    traceLog("  Unexpected cache response: " + response.substr(0, 20));
     return nullptr;
 }
 
@@ -176,7 +176,7 @@ std::unique_ptr<DNSMessage> CacheClient::parseHitResponse(const std::string& res
         DNSMessage msg = deserializeFromCache(response);
         return std::make_unique<DNSMessage>(msg);
     } catch (const std::exception& e) {
-        traceLog("⚠️  Failed to parse cached response: " + std::string(e.what()));
+        traceLog("  Failed to parse cached response: " + std::string(e.what()));
         return nullptr;
     }
 }

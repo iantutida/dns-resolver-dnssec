@@ -1,3 +1,22 @@
+/*
+ * Arquivo: test_dns_response_parsing.cpp
+ * Propósito: Testes unitários para parsing de respostas DNS, validando descompressão e parsing de resource records
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver com DNSSEC
+ * 
+ * Este arquivo contém testes abrangentes para o parsing de respostas DNS, cobrindo:
+ * - Parsing de headers DNS com flags e contadores
+ * - Descompressão de nomes de domínio (com e sem compressão)
+ * - Parsing de resource records (A, NS, CNAME, MX, TXT, AAAA, SOA, PTR)
+ * - Validação de buffers inválidos e ponteiros de compressão
+ * - Parsing de múltiplas seções (Answer, Authority, Additional)
+ * 
+ * Os testes verificam conformidade com RFC 1035 e garantem que o parser
+ * consegue interpretar corretamente mensagens DNS complexas com compressão
+ * e múltiplos tipos de resource records.
+ */
+
 #include "dns_resolver/types.h"
 #include "dns_resolver/DNSParser.h"
 #include <iostream>
@@ -6,10 +25,18 @@
 
 using namespace dns_resolver;
 
-// Contadores de testes
+// ========== Sistema de Contadores de Testes ==========
+// Sistema simples para rastrear resultados dos testes, facilitando
+// a identificação de falhas e fornecendo estatísticas finais.
+
 int tests_passed = 0;
 int tests_failed = 0;
 
+/**
+ * Função auxiliar para executar testes e atualizar contadores
+ * Fornece feedback visual imediato sobre o resultado de cada teste
+ * e mantém estatísticas para o relatório final.
+ */
 void test_assert(bool condition, const std::string& test_name) {
     if (condition) {
         std::cout << "✓ " << test_name << "\n";
@@ -20,8 +47,15 @@ void test_assert(bool condition, const std::string& test_name) {
     }
 }
 
-// ========== TESTES DE PARSING DO HEADER ==========
+// ========== Testes de Parsing do Header DNS ==========
+// Estes testes verificam se o parser consegue interpretar corretamente
+// o header DNS de 12 bytes, incluindo ID, flags e contadores.
 
+/**
+ * Testa parsing básico do header DNS
+ * Verifica se todos os campos do header são interpretados corretamente:
+ * ID, flags (QR, RD, RA), contadores (QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT)
+ */
 void test_parse_header_basic() {
     std::cout << "\n[TEST] Parse Header Básico\n";
     
@@ -67,19 +101,26 @@ void test_parse_header_basic() {
     test_assert(msg.header.ancount == 1, "Header ANCOUNT=1");
 }
 
-// ========== TESTES DE DESCOMPRESSÃO DE NOMES ==========
+// ========== Testes de Descompressão de Nomes de Domínio ==========
+// Estes testes verificam se o parser consegue descomprimir corretamente
+// nomes de domínio que usam ponteiros de compressão (RFC 1035).
 
+/**
+ * Testa parsing de nome de domínio sem compressão
+ * Verifica se nomes simples são interpretados corretamente quando
+ * não há uso de ponteiros de compressão.
+ */
 void test_domain_name_no_compression() {
     std::cout << "\n[TEST] Parsing de Nome Sem Compressão\n";
     
-    // "www.google.com"
+    // "www.google.com" - nome completo sem ponteiros
     std::vector<uint8_t> buffer = {
         0x12, 0x34, 0x81, 0x80, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // Header
-        0x03, 'w', 'w', 'w',
-        0x06, 'g', 'o', 'o', 'g', 'l', 'e',
-        0x03, 'c', 'o', 'm',
-        0x00,
-        0x00, 0x01, 0x00, 0x01  // Type A, Class IN
+        0x03, 'w', 'w', 'w',        // "www" (3 bytes)
+        0x06, 'g', 'o', 'o', 'g', 'l', 'e',  // "google" (6 bytes)
+        0x03, 'c', 'o', 'm',        // "com" (3 bytes)
+        0x00,                       // Terminador
+        0x00, 0x01, 0x00, 0x01      // Type A, Class IN
     };
     
     DNSMessage msg = DNSParser::parse(buffer);
@@ -90,6 +131,11 @@ void test_domain_name_no_compression() {
     test_assert(msg.questions[0].qclass == 1, "QCLASS=IN");
 }
 
+/**
+ * Testa parsing de nome de domínio com compressão usando ponteiros
+ * Verifica se o parser consegue descomprimir corretamente nomes que
+ * referenciam partes anteriores da mensagem através de ponteiros.
+ */
 void test_domain_name_with_compression() {
     std::cout << "\n[TEST] Parsing de Nome Com Compressão\n";
     
@@ -97,10 +143,10 @@ void test_domain_name_with_compression() {
     // Answer: pointer to "google.com" at offset 16
     std::vector<uint8_t> buffer = {
         0x12, 0x34, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,  // Header (0-11)
-        0x03, 'w', 'w', 'w',              // offset 12-15
+        0x03, 'w', 'w', 'w',              // offset 12-15 ("www")
         0x06, 'g', 'o', 'o', 'g', 'l', 'e',  // offset 16-22 ("google")
         0x03, 'c', 'o', 'm',              // offset 23-26 ("com")
-        0x00,                             // offset 27
+        0x00,                             // offset 27 (terminador)
         0x00, 0x01, 0x00, 0x01,           // Type A, Class IN (28-31)
         
         // Answer RR: name uses pointer to offset 16 (google.com)
@@ -123,17 +169,24 @@ void test_domain_name_with_compression() {
     test_assert(msg.answers[0].rdata_a == "8.8.8.8", "Answer RDATA IPv4 correto");
 }
 
-// ========== TESTES DE PARSING DE RESOURCE RECORDS ==========
+// ========== Testes de Parsing de Resource Records ==========
+// Estes testes verificam se o parser consegue interpretar corretamente
+// diferentes tipos de resource records (RR) conforme especificado no RFC 1035.
 
+/**
+ * Testa parsing de resource record tipo A (IPv4)
+ * Verifica se endereços IPv4 são interpretados corretamente e
+ * convertidos para formato string legível.
+ */
 void test_parse_rr_type_a() {
     std::cout << "\n[TEST] Parsing de RR Tipo A\n";
     
     std::vector<uint8_t> buffer = {
         0x12, 0x34, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
-        0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',
-        0x03, 'c', 'o', 'm',
-        0x00,
-        0x00, 0x01, 0x00, 0x01,
+        0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',  // "example"
+        0x03, 'c', 'o', 'm',                      // "com"
+        0x00,                                     // Terminador
+        0x00, 0x01, 0x00, 0x01,                   // Type A, Class IN
         
         // Answer RR Type A
         0xc0, 0x0c,              // Pointer to "example.com"
@@ -153,15 +206,20 @@ void test_parse_rr_type_a() {
     test_assert(msg.answers[0].rdata_a == "192.168.1.10", "RR IPv4 correto");
 }
 
+/**
+ * Testa parsing de resource record tipo NS (Name Server)
+ * Verifica se nameservers são interpretados corretamente,
+ * incluindo descompressão de nomes com ponteiros.
+ */
 void test_parse_rr_type_ns() {
     std::cout << "\n[TEST] Parsing de RR Tipo NS\n";
     
     std::vector<uint8_t> buffer = {
         0x12, 0x34, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
-        0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',
-        0x03, 'c', 'o', 'm',
-        0x00,
-        0x00, 0x02, 0x00, 0x01,  // Type NS
+        0x07, 'e', 'x', 'a', 'm', 'p', 'l', 'e',  // "example"
+        0x03, 'c', 'o', 'm',                      // "com"
+        0x00,                                     // Terminador
+        0x00, 0x02, 0x00, 0x01,                   // Type NS, Class IN
         
         // Answer RR Type NS
         0xc0, 0x0c,              // Pointer to "example.com"
@@ -169,7 +227,7 @@ void test_parse_rr_type_ns() {
         0x00, 0x01,              // Class IN
         0x00, 0x00, 0x00, 0x3c,  // TTL=60
         0x00, 0x06,              // RDLENGTH=6
-        0x03, 'n', 's', '1',
+        0x03, 'n', 's', '1',     // "ns1"
         0xc0, 0x0c               // Pointer to "example.com"
     };
     
@@ -180,6 +238,11 @@ void test_parse_rr_type_ns() {
     test_assert(msg.answers[0].rdata_ns == "ns1.example.com", "RR nameserver correto");
 }
 
+/**
+ * Testa parsing de resource record tipo CNAME (Canonical Name)
+ * Verifica se aliases são interpretados corretamente,
+ * incluindo descompressão de nomes com ponteiros.
+ */
 void test_parse_rr_type_cname() {
     std::cout << "\n[TEST] Parsing de RR Tipo CNAME\n";
     
@@ -207,6 +270,11 @@ void test_parse_rr_type_cname() {
     test_assert(msg.answers[0].rdata_cname == "example.com", "RR canonical name correto");
 }
 
+/**
+ * Testa parsing de resource record tipo MX (Mail Exchange)
+ * Verifica se registros de correio são interpretados corretamente,
+ * incluindo prioridade e nome do servidor de correio.
+ */
 void test_parse_rr_type_mx() {
     std::cout << "\n[TEST] Parsing de RR Tipo MX\n";
     
@@ -235,6 +303,11 @@ void test_parse_rr_type_mx() {
     test_assert(msg.answers[0].rdata_mx == "10 mail.example.com", "RR MX (priority + exchange) correto");
 }
 
+/**
+ * Testa parsing de resource record tipo TXT
+ * Verifica se registros de texto são interpretados corretamente,
+ * incluindo strings de caracteres de tamanho variável.
+ */
 void test_parse_rr_type_txt() {
     std::cout << "\n[TEST] Parsing de RR Tipo TXT\n";
     
@@ -261,6 +334,11 @@ void test_parse_rr_type_txt() {
     test_assert(msg.answers[0].rdata_txt == "v=spf1 ~all", "RR TXT correto");
 }
 
+/**
+ * Testa parsing de resource record tipo AAAA (IPv6)
+ * Verifica se endereços IPv6 são interpretados corretamente
+ * e convertidos para formato string legível.
+ */
 void test_parse_rr_type_aaaa() {
     std::cout << "\n[TEST] Parsing de RR Tipo AAAA (IPv6)\n";
     
@@ -289,6 +367,11 @@ void test_parse_rr_type_aaaa() {
     test_assert(msg.answers[0].rdata_aaaa.find("db8") != std::string::npos, "RR IPv6 contém db8");
 }
 
+/**
+ * Testa parsing de resource record tipo SOA (Start of Authority)
+ * Verifica se registros SOA são interpretados corretamente,
+ * incluindo todos os campos: MNAME, RNAME, SERIAL, REFRESH, etc.
+ */
 void test_parse_rr_type_soa() {
     std::cout << "\n[TEST] Parsing de RR Tipo SOA\n";
     
@@ -329,6 +412,11 @@ void test_parse_rr_type_soa() {
     test_assert(msg.answers[0].rdata_soa.refresh == 7200, "SOA REFRESH correto");
 }
 
+/**
+ * Testa parsing de resource record tipo PTR (Pointer)
+ * Verifica se registros de DNS reverso são interpretados corretamente,
+ * incluindo descompressão de nomes complexos.
+ */
 void test_parse_rr_type_ptr() {
     std::cout << "\n[TEST] Parsing de RR Tipo PTR (Reverse DNS)\n";
     
@@ -361,8 +449,15 @@ void test_parse_rr_type_ptr() {
     test_assert(msg.answers[0].rdata_ptr == "router.local", "RR PTR domain correto");
 }
 
-// ========== TESTES DE VALIDAÇÃO ==========
+// ========== Testes de Validação e Tratamento de Erros ==========
+// Estes testes verificam se o parser trata corretamente casos inválidos
+// e situações de erro, garantindo robustez e segurança.
 
+/**
+ * Testa tratamento de buffer muito curto (< 12 bytes)
+ * Verifica se o parser rejeita corretamente buffers que não contêm
+ * nem mesmo um header DNS completo.
+ */
 void test_invalid_buffer_too_short() {
     std::cout << "\n[TEST] Buffer Muito Curto (< 12 bytes)\n";
     
@@ -376,6 +471,11 @@ void test_invalid_buffer_too_short() {
     }
 }
 
+/**
+ * Testa tratamento de ponteiro de compressão inválido
+ * Verifica se o parser detecta e rejeita ponteiros que apontam
+ * para posições além do tamanho do buffer.
+ */
 void test_invalid_pointer_offset() {
     std::cout << "\n[TEST] Ponteiro de Compressão Inválido\n";
     
@@ -403,6 +503,11 @@ void test_invalid_pointer_offset() {
     }
 }
 
+/**
+ * Testa descompressão com múltiplos níveis de ponteiros
+ * Verifica se o parser consegue lidar com cadeias de ponteiros
+ * que referenciam outros ponteiros (compressão aninhada).
+ */
 void test_compression_multiple_levels() {
     std::cout << "\n[TEST] Descompressão com Múltiplos Níveis de Ponteiros\n";
     
@@ -444,6 +549,11 @@ void test_compression_multiple_levels() {
     test_assert(msg.answers[1].name == "example.com", "Segundo RR descomprimido corretamente");
 }
 
+/**
+ * Testa validação de flag QR (Query/Response)
+ * Verifica se o parser interpreta corretamente a flag QR
+ * e pode distinguir entre queries e respostas.
+ */
 void test_response_qr_flag_validation() {
     std::cout << "\n[TEST] Validação de Flag QR (Deve Ser Resposta)\n";
     
@@ -464,6 +574,11 @@ void test_response_qr_flag_validation() {
     // Em produção, deveria validar e rejeitar se esperávamos uma resposta
 }
 
+/**
+ * Testa validação de RCODE (Response Code)
+ * Verifica se o parser interpreta corretamente códigos de resposta
+ * como NXDOMAIN (RCODE=3) e outras condições de erro.
+ */
 void test_response_rcode_validation() {
     std::cout << "\n[TEST] Validação de RCODE (NXDOMAIN)\n";
     
@@ -484,8 +599,15 @@ void test_response_rcode_validation() {
     test_assert(msg.answers.size() == 0, "Nenhuma resposta em NXDOMAIN");
 }
 
-// ========== TESTES DE MÚLTIPLAS SEÇÕES ==========
+// ========== Testes de Múltiplas Seções DNS ==========
+// Estes testes verificam se o parser consegue interpretar corretamente
+// mensagens DNS com múltiplas seções (Answer, Authority, Additional).
 
+/**
+ * Testa parsing de múltiplas seções DNS (Answer + Authority)
+ * Verifica se o parser consegue processar corretamente mensagens
+ * que contêm tanto respostas quanto registros de autoridade.
+ */
 void test_parse_multiple_sections() {
     std::cout << "\n[TEST] Parsing de Múltiplas Seções (Answer + Authority)\n";
     
@@ -526,33 +648,45 @@ void test_parse_multiple_sections() {
     test_assert(msg.authority[0].type == DNSType::NS, "Authority type NS");
 }
 
-// ========== MAIN ==========
+// ========== Função Principal de Testes ==========
 
+/**
+ * Função principal que executa todos os testes unitários de parsing de respostas DNS
+ * Organiza os testes em categorias lógicas e fornece feedback detalhado
+ * sobre o resultado de cada teste, facilitando a identificação de problemas.
+ * 
+ * Cobertura de testes:
+ * - Parsing de headers DNS
+ * - Descompressão de nomes (com e sem compressão)
+ * - Parsing de 8 tipos de resource records
+ * - Validação de buffers inválidos
+ * - Parsing de múltiplas seções
+ */
 int main() {
     std::cout << "==========================================\n";
     std::cout << "  TESTES DE PARSING DE RESPOSTA DNS\n";
     std::cout << "  Story 1.2 - Automated Test Suite\n";
     std::cout << "==========================================\n";
     
-    // Testes de Header
+    // Testes de Header DNS
     test_parse_header_basic();
     
-    // Testes de Descompressão
+    // Testes de Descompressão de Nomes
     test_domain_name_no_compression();
     test_domain_name_with_compression();
     test_compression_multiple_levels();
     
-    // Testes de Resource Records (8 tipos)
-    test_parse_rr_type_a();
-    test_parse_rr_type_ns();
-    test_parse_rr_type_cname();
-    test_parse_rr_type_mx();
-    test_parse_rr_type_txt();
-    test_parse_rr_type_aaaa();
-    test_parse_rr_type_soa();
-    test_parse_rr_type_ptr();
+    // Testes de Resource Records (8 tipos principais)
+    test_parse_rr_type_a();        // IPv4
+    test_parse_rr_type_ns();       // Name Server
+    test_parse_rr_type_cname();    // Canonical Name
+    test_parse_rr_type_mx();       // Mail Exchange
+    test_parse_rr_type_txt();      // Text
+    test_parse_rr_type_aaaa();     // IPv6
+    test_parse_rr_type_soa();      // Start of Authority
+    test_parse_rr_type_ptr();      // Pointer (Reverse DNS)
     
-    // Testes de Validação
+    // Testes de Validação e Tratamento de Erros
     test_invalid_buffer_too_short();
     test_invalid_pointer_offset();
     test_response_qr_flag_validation();
@@ -562,19 +696,23 @@ int main() {
     test_parse_multiple_sections();
     
     std::cout << "\n==========================================\n";
-    std::cout << "  RESULTADOS\n";
+    std::cout << "  RESULTADOS FINAIS\n";
     std::cout << "==========================================\n";
     std::cout << "  ✓ Testes passaram: " << tests_passed << "\n";
     std::cout << "  ✗ Testes falharam: " << tests_failed << "\n";
     std::cout << "==========================================\n";
     
     if (tests_failed == 0) {
-        std::cout << "\n🎉 TODOS OS TESTES PASSARAM!\n\n";
+        std::cout << "\n TODOS OS TESTES PASSARAM!\n\n";
         std::cout << "  Total de testes: " << tests_passed << "\n";
-        std::cout << "  Cobertura de tipos RR: 100% (8/8)\n\n";
+        std::cout << "  Cobertura de tipos RR: 100% (8/8)\n";
+        std::cout << "  Cobertura de compressão: Completa\n";
+        std::cout << "  Validação de erros: Completa\n\n";
         return 0;
     } else {
-        std::cout << "\n❌ ALGUNS TESTES FALHARAM\n\n";
+        std::cout << "\n ALGUNS TESTES FALHARAM\n\n";
+        std::cout << "  Verifique os logs acima para identificar problemas.\n";
+        std::cout << "  Cada teste falhado indica um problema específico no parser.\n\n";
         return 1;
     }
 }

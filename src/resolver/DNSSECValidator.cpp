@@ -143,17 +143,17 @@ bool DNSSECValidator::validateDNSKEY(
     traceLog("    Expected key tag:   " + std::to_string(ds.key_tag));
     
     if (calculated_tag != ds.key_tag) {
-        traceLog("    ❌ Key tag mismatch!");
+        traceLog("     Key tag mismatch!");
         return false;
     }
-    traceLog("    ✅ Key tag match");
+    traceLog("     Key tag match");
     
     // 2. Verificar algorithm
     if (dnskey.algorithm != ds.algorithm) {
-        traceLog("    ❌ Algorithm mismatch!");
+        traceLog("     Algorithm mismatch!");
         return false;
     }
-    traceLog("    ✅ Algorithm match (" + std::to_string(dnskey.algorithm) + ")");
+    traceLog("     Algorithm match (" + std::to_string(dnskey.algorithm) + ")");
     
     // 3. Calcular digest
     std::vector<uint8_t> calculated_digest = calculateDigest(
@@ -165,7 +165,7 @@ bool DNSSECValidator::validateDNSKEY(
     
     // 4. Comparar digests (timing-safe - comparar todos bytes)
     if (calculated_digest.size() != ds.digest.size()) {
-        traceLog("    ❌ Digest size mismatch!");
+        traceLog("     Digest size mismatch!");
         return false;
     }
     
@@ -178,11 +178,11 @@ bool DNSSECValidator::validateDNSKEY(
     }
     
     if (!match) {
-        traceLog("    ❌ Digest mismatch!");
+        traceLog("     Digest mismatch!");
         return false;
     }
     
-    traceLog("    ✅ Digest match - DNSKEY validated!");
+    traceLog("     Digest match - DNSKEY validated!");
     return true;
 }
 
@@ -214,7 +214,7 @@ ValidationResult DNSSECValidator::validateChain(
     // 1. Validar root DNSKEY com trust anchor
     auto root_tas = trust_anchors_.getTrustAnchorsForZone(".");
     if (root_tas.empty()) {
-        traceLog("❌ No trust anchor for root zone");
+        traceLog(" No trust anchor for root zone");
         return ValidationResult::Indeterminate;
     }
     
@@ -223,7 +223,7 @@ ValidationResult DNSSECValidator::validateChain(
     
     auto root_dnskeys_it = dnskeys.find(".");
     if (root_dnskeys_it == dnskeys.end() || root_dnskeys_it->second.empty()) {
-        traceLog("❌ No DNSKEY for root zone (DNSSEC not available)");
+        traceLog(" No DNSKEY for root zone (DNSSEC not available)");
         return ValidationResult::Insecure;
     }
     
@@ -233,7 +233,7 @@ ValidationResult DNSSECValidator::validateChain(
         
         for (const auto& dnskey : root_dnskeys_it->second) {
             if (validateDNSKEYWithTrustAnchor(dnskey, ta, ".")) {
-                traceLog("✅ Root DNSKEY validated with trust anchor!");
+                traceLog(" Root DNSKEY validated with trust anchor!");
                 root_validated = true;
                 break;
             }
@@ -242,7 +242,7 @@ ValidationResult DNSSECValidator::validateChain(
     }
     
     if (!root_validated) {
-        traceLog("❌ Root DNSKEY validation failed - BOGUS!");
+        traceLog(" Root DNSKEY validation failed - BOGUS!");
         return ValidationResult::Bogus;
     }
     
@@ -276,7 +276,7 @@ ValidationResult DNSSECValidator::validateChain(
         for (const auto& ds : ds_it->second) {
             for (const auto& dnskey : dnskey_it->second) {
                 if (validateDNSKEY(dnskey, ds, current_zone)) {
-                    traceLog("✅ Zone '" + current_zone + "' DNSKEY validated!");
+                    traceLog(" Zone '" + current_zone + "' DNSKEY validated!");
                     zone_validated = true;
                     break;
                 }
@@ -285,14 +285,14 @@ ValidationResult DNSSECValidator::validateChain(
         }
         
         if (!zone_validated) {
-            traceLog("❌ Zone '" + current_zone + "' DNSKEY validation failed - BOGUS!");
+            traceLog(" Zone '" + current_zone + "' DNSKEY validation failed - BOGUS!");
             return ValidationResult::Bogus;
         }
         
         current_zone = parent;
     }
     
-    traceLog("\n✅ DNSSEC CHAIN VALIDATED: SECURE");
+    traceLog("\n DNSSEC CHAIN VALIDATED: SECURE");
     return ValidationResult::Secure;
 }
 
@@ -365,33 +365,33 @@ bool DNSSECValidator::validateRRSIG(
     time_t now = time(nullptr);
     
     if (now < static_cast<time_t>(rrsig.signature_inception)) {
-        traceLog("    ❌ Signature not yet valid (inception in future)");
+        traceLog("     Signature not yet valid (inception in future)");
         return false;
     }
     
     if (now > static_cast<time_t>(rrsig.signature_expiration)) {
-        traceLog("    ❌ Signature expired");
+        traceLog("     Signature expired");
         return false;
     }
     
-    traceLog("    ✅ Period valid");
+    traceLog("     Period valid");
     
     // 2. Verificar que DNSKEY key_tag corresponde
     uint16_t dnskey_tag = calculateKeyTag(dnskey);
     if (dnskey_tag != rrsig.key_tag) {
-        traceLog("    ❌ Key tag mismatch");
+        traceLog("     Key tag mismatch");
         return false;
     }
     
-    traceLog("    ✅ Key tag match");
+    traceLog("     Key tag match");
     
     // 3. Verificar algoritmo
     if (dnskey.algorithm != rrsig.algorithm) {
-        traceLog("    ❌ Algorithm mismatch");
+        traceLog("     Algorithm mismatch");
         return false;
     }
     
-    traceLog("    ✅ Algorithm match (" + std::to_string(rrsig.algorithm) + ")");
+    traceLog("     Algorithm match (" + std::to_string(rrsig.algorithm) + ")");
     
     // 4. Canonicalizar RRset
     traceLog("    Canonicalizing RRset (" + std::to_string(rrset.size()) + " records)...");
@@ -412,15 +412,15 @@ bool DNSSECValidator::validateRRSIG(
         traceLog("    Verifying ECDSA P-256/SHA-256 signature...");
         signature_valid = verifyECDSASignature(dnskey.public_key, verification_buffer, rrsig.signature);
     } else {
-        traceLog("    ❌ Unsupported algorithm: " + std::to_string(rrsig.algorithm));
+        traceLog("     Unsupported algorithm: " + std::to_string(rrsig.algorithm));
         return false;
     }
     
     if (signature_valid) {
-        traceLog("    ✅ RRSIG signature valid!");
+        traceLog("     RRSIG signature valid!");
         return true;
     } else {
-        traceLog("    ❌ RRSIG signature invalid!");
+        traceLog("     RRSIG signature invalid!");
         return false;
     }
 }
@@ -667,7 +667,7 @@ bool DNSSECValidator::verifyECDSASignature(
     
     // Validações básicas
     if (public_key.empty() || signature.empty() || data.empty()) {
-        traceLog("  ❌ Empty input (key/signature/data)");
+        traceLog("   Empty input (key/signature/data)");
         return false;
     }
     
@@ -676,12 +676,12 @@ bool DNSSECValidator::verifyECDSASignature(
     try {
         pkey = static_cast<EVP_PKEY*>(convertDNSKEYToECDSA(public_key));
     } catch (const std::exception& e) {
-        traceLog("  ❌ Failed to convert DNSKEY to ECDSA: " + std::string(e.what()));
+        traceLog("   Failed to convert DNSKEY to ECDSA: " + std::string(e.what()));
         return false;
     }
     
     if (!pkey) {
-        traceLog("  ❌ Failed to create ECDSA key (null)");
+        traceLog("   Failed to create ECDSA key (null)");
         return false;
     }
     
@@ -690,7 +690,7 @@ bool DNSSECValidator::verifyECDSASignature(
     // Criar contexto de verificação
     EVP_MD_CTX* ctx = EVP_MD_CTX_new();
     if (!ctx) {
-        traceLog("  ❌ Failed to create EVP_MD_CTX");
+        traceLog("   Failed to create EVP_MD_CTX");
         return false;
     }
     
@@ -700,7 +700,7 @@ bool DNSSECValidator::verifyECDSASignature(
         unsigned long err = ERR_get_error();
         char err_buf[256];
         ERR_error_string_n(err, err_buf, sizeof(err_buf));
-        traceLog("  ❌ DigestVerifyInit failed: " + std::string(err_buf));
+        traceLog("   DigestVerifyInit failed: " + std::string(err_buf));
         EVP_MD_CTX_free(ctx);
         return false;
     }
@@ -712,16 +712,16 @@ bool DNSSECValidator::verifyECDSASignature(
     EVP_MD_CTX_free(ctx);
     
     if (result == 1) {
-        traceLog("  ✅ ECDSA signature valid!");
+        traceLog("   ECDSA signature valid!");
         return true;
     } else {
         unsigned long err = ERR_get_error();
         if (err != 0) {
             char err_buf[256];
             ERR_error_string_n(err, err_buf, sizeof(err_buf));
-            traceLog("  ❌ ECDSA verification failed: " + std::string(err_buf));
+            traceLog("   ECDSA verification failed: " + std::string(err_buf));
         } else {
-            traceLog("  ❌ ECDSA signature invalid (no OpenSSL error)");
+            traceLog("   ECDSA signature invalid (no OpenSSL error)");
         }
         return false;
     }
@@ -736,7 +736,7 @@ bool DNSSECValidator::verifyRSASignature(
     
     // Validações básicas
     if (public_key.empty() || signature.empty() || data.empty()) {
-        traceLog("  ❌ Empty input (key/signature/data)");
+        traceLog("   Empty input (key/signature/data)");
         return false;
     }
     
@@ -745,12 +745,12 @@ bool DNSSECValidator::verifyRSASignature(
     try {
         pkey = static_cast<EVP_PKEY*>(convertDNSKEYToRSA(public_key));
     } catch (const std::exception& e) {
-        traceLog("  ❌ Failed to convert DNSKEY to RSA: " + std::string(e.what()));
+        traceLog("   Failed to convert DNSKEY to RSA: " + std::string(e.what()));
         return false;
     }
     
     if (!pkey) {
-        traceLog("  ❌ Failed to create RSA key (null)");
+        traceLog("   Failed to create RSA key (null)");
         return false;
     }
     
@@ -759,7 +759,7 @@ bool DNSSECValidator::verifyRSASignature(
     // Criar contexto de verificação
     EVP_MD_CTX* ctx = EVP_MD_CTX_new();
     if (!ctx) {
-        traceLog("  ❌ Failed to create EVP_MD_CTX");
+        traceLog("   Failed to create EVP_MD_CTX");
         return false;
     }
     
@@ -769,7 +769,7 @@ bool DNSSECValidator::verifyRSASignature(
         unsigned long err = ERR_get_error();
         char err_buf[256];
         ERR_error_string_n(err, err_buf, sizeof(err_buf));
-        traceLog("  ❌ DigestVerifyInit failed: " + std::string(err_buf));
+        traceLog("   DigestVerifyInit failed: " + std::string(err_buf));
         EVP_MD_CTX_free(ctx);
         return false;
     }
@@ -781,16 +781,16 @@ bool DNSSECValidator::verifyRSASignature(
     EVP_MD_CTX_free(ctx);
     
     if (result == 1) {
-        traceLog("  ✅ RSA signature valid!");
+        traceLog("   RSA signature valid!");
         return true;
     } else {
         unsigned long err = ERR_get_error();
         if (err != 0) {
             char err_buf[256];
             ERR_error_string_n(err, err_buf, sizeof(err_buf));
-            traceLog("  ❌ RSA verification failed: " + std::string(err_buf));
+            traceLog("   RSA verification failed: " + std::string(err_buf));
         } else {
-            traceLog("  ❌ RSA signature invalid (no OpenSSL error)");
+            traceLog("   RSA signature invalid (no OpenSSL error)");
         }
         return false;
     }

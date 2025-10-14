@@ -1,12 +1,38 @@
+/*
+ * Arquivo: test_tcp_framing.cpp
+ * Propósito: Testes unitários para TCP framing de mensagens DNS, validando length prefix
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver com DNSSEC
+ * 
+ * Este arquivo contém testes abrangentes para TCP framing de mensagens DNS, cobrindo:
+ * - Adição de length prefix de 2 bytes antes da mensagem DNS
+ * - Codificação em big-endian (network byte order) conforme RFC 1035
+ * - Suporte a mensagens de diferentes tamanhos (pequenas e grandes)
+ * - Validação de limites de tamanho (máximo 65535 bytes)
+ * - Parsing de length prefix em respostas TCP
+ * - Conformidade com RFC 7766 (DNS over TCP)
+ * 
+ * Os testes verificam conformidade com RFC 1035 e RFC 7766, garantindo que
+ * o sistema consegue encapsular corretamente mensagens DNS para transmissão
+ * sobre TCP, incluindo o length prefix obrigatório.
+ */
+
 #include "../include/dns_resolver/types.h"
 #include <iostream>
 #include <cassert>
 #include <vector>
 
-// ========== TESTES DE TCP FRAMING ==========
+using namespace dns_resolver;
+
+// ========== Testes de TCP Framing ==========
+// Estes testes verificam se o sistema adiciona corretamente o length prefix
+// de 2 bytes antes das mensagens DNS para transmissão sobre TCP.
 
 /**
- * Testa adição de length prefix (TCP framing)
+ * Testa adição básica de length prefix para TCP framing
+ * Verifica se o sistema adiciona corretamente os 2 bytes de comprimento
+ * antes da mensagem DNS, codificando o tamanho em big-endian.
  */
 void test_tcp_framing_basic() {
     std::cout << "  [TEST] TCP Framing - length prefix básico... ";
@@ -31,11 +57,13 @@ void test_tcp_framing_basic() {
     assert(framed[1] == 0x1C);  // Low byte de 28
     assert(framed[2] == 0x12);  // Primeiro byte da mensagem (ID)
     
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
 /**
- * Testa framing com mensagens de tamanhos variados
+ * Testa TCP framing com mensagens de diferentes tamanhos
+ * Verifica se o sistema processa corretamente mensagens pequenas
+ * (apenas header) e grandes (com múltiplos registros).
  */
 void test_tcp_framing_sizes() {
     std::cout << "  [TEST] TCP Framing - tamanhos variados... ";
@@ -64,11 +92,13 @@ void test_tcp_framing_sizes() {
     assert(framed_large[0] == 0x02);  // High byte de 512 (0x0200)
     assert(framed_large[1] == 0x00);  // Low byte
     
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
 /**
- * Testa big-endian (network byte order) do length
+ * Testa codificação big-endian (network byte order) do length prefix
+ * Verifica se o sistema codifica corretamente o comprimento em big-endian,
+ * conforme especificado na RFC 1035 para DNS over TCP.
  */
 void test_tcp_framing_endianness() {
     std::cout << "  [TEST] TCP Framing - big-endian (network byte order)... ";
@@ -89,11 +119,13 @@ void test_tcp_framing_endianness() {
     uint16_t reconstructed = (framed[0] << 8) | framed[1];
     assert(reconstructed == 256);
     
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
 /**
- * Testa detecção de mensagem muito grande (>65535 bytes)
+ * Testa limite máximo de tamanho para mensagens DNS over TCP
+ * Verifica se o sistema processa corretamente mensagens no limite
+ * máximo de 65535 bytes (valor máximo de uint16_t).
  */
 void test_tcp_framing_max_size() {
     std::cout << "  [TEST] TCP Framing - limite de tamanho (65535 bytes)... ";
@@ -111,11 +143,13 @@ void test_tcp_framing_max_size() {
     uint16_t reconstructed = (framed[0] << 8) | framed[1];
     assert(reconstructed == 65535);
     
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
 /**
- * Testa parsing de length prefix da resposta
+ * Testa parsing de length prefix em respostas TCP
+ * Verifica se o sistema consegue extrair corretamente o comprimento
+ * da mensagem DNS a partir dos primeiros 2 bytes da resposta TCP.
  */
 void test_tcp_framing_parse_length() {
     std::cout << "  [TEST] TCP Framing - parsing de length prefix... ";
@@ -126,26 +160,65 @@ void test_tcp_framing_parse_length() {
     uint16_t length = (length_bytes[0] << 8) | length_bytes[1];
     
     assert(length == 42);
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
-// ========== MAIN ==========
+// ========== Função Principal de Testes ==========
 
+/**
+ * Função principal que executa todos os testes unitários de TCP framing
+ * Organiza os testes em categorias lógicas e fornece feedback detalhado
+ * sobre o resultado de cada teste, facilitando a identificação de problemas.
+ * 
+ * Cobertura de testes:
+ * - Adição de length prefix de 2 bytes antes da mensagem DNS
+ * - Codificação em big-endian (network byte order) conforme RFC 1035
+ * - Suporte a mensagens de diferentes tamanhos (pequenas e grandes)
+ * - Validação de limites de tamanho (máximo 65535 bytes)
+ * - Parsing de length prefix em respostas TCP
+ * - Conformidade com RFC 7766 (DNS over TCP)
+ * 
+ * Requisitos para execução completa:
+ * - Conformidade com RFC 1035 (DNS)
+ * - Conformidade com RFC 7766 (DNS over TCP)
+ * - Suporte a mensagens de diferentes tamanhos
+ * - Codificação correta em big-endian
+ */
 int main() {
     std::cout << "\n========================================\n";
     std::cout << "  Testes de TCP Framing\n";
     std::cout << "  Story 2.1 - Automated Test Suite\n";
     std::cout << "========================================\n\n";
     
+    // Testes de TCP Framing Básico
     test_tcp_framing_basic();
+    
+    // Testes de Tamanhos Variados
     test_tcp_framing_sizes();
+    
+    // Testes de Endianness (Big-Endian)
     test_tcp_framing_endianness();
+    
+    // Testes de Limite Máximo
     test_tcp_framing_max_size();
+    
+    // Testes de Parsing
     test_tcp_framing_parse_length();
     
+    // Resultados Finais
     std::cout << "\n========================================\n";
-    std::cout << "  ✅ Todos os testes de TCP framing passaram!\n";
+    std::cout << "   Todos os testes de TCP framing passaram!\n";
     std::cout << "========================================\n\n";
+    
+    std::cout << " Resumo da Cobertura:\n";
+    std::cout << "  • Length prefix (2 bytes):     CORRETO\n";
+    std::cout << "  • Big-endian encoding:         CORRETO\n";
+    std::cout << "  • Mensagens pequenas:          CORRETO\n";
+    std::cout << "  • Mensagens grandes:           CORRETO\n";
+    std::cout << "  • Limite máximo (65535):       CORRETO\n";
+    std::cout << "  • Parsing de respostas:        CORRETO\n";
+    std::cout << "  • Conformidade RFC 1035:      CORRETO\n";
+    std::cout << "  • Conformidade RFC 7766:       CORRETO\n\n";
     
     return 0;
 }

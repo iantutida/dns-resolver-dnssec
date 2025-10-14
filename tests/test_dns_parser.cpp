@@ -1,3 +1,21 @@
+/*
+ * Arquivo: test_dns_parser.cpp
+ * Propósito: Testes unitários para a classe DNSParser, validando serialização e parsing de mensagens DNS
+ * Autor: João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
+ * Data: 14/10/2025
+ * Projeto: DNS Resolver com DNSSEC
+ * 
+ * Este arquivo contém testes abrangentes para o DNSParser, cobrindo:
+ * - Codificação de nomes de domínio (encodeDomainName)
+ * - Serialização de headers DNS com flags e contadores
+ * - Serialização de seções de question
+ * - Validação de endianness (big-endian)
+ * - Casos edge como domínios vazios, muito longos e labels inválidos
+ * 
+ * Os testes verificam conformidade com RFC 1035 e garantem que a serialização
+ * produz mensagens DNS válidas que podem ser enviadas pela rede.
+ */
+
 #include "../include/dns_resolver/DNSParser.h"
 #include "../include/dns_resolver/types.h"
 #include <iostream>
@@ -6,8 +24,16 @@
 
 using namespace dns_resolver;
 
-// ========== Testes de encodeDomainName ==========
+// ========== Testes de Codificação de Nomes de Domínio ==========
+// Estes testes verificam a função encodeDomainName que converte nomes DNS
+// do formato string para o formato binário usado em mensagens DNS.
+// A codificação segue RFC 1035: cada label é precedido por seu tamanho.
 
+/**
+ * Testa codificação de um domínio simples (google.com)
+ * Verifica se o nome é codificado corretamente no formato DNS:
+ * [tamanho_label][conteúdo_label]...[tamanho_label][conteúdo_label][0]
+ */
 void test_encodeDomainName_simple() {
     std::cout << "  [TEST] encodeDomainName - domínio simples... ";
     
@@ -30,9 +56,14 @@ void test_encodeDomainName_simple() {
     assert(buffer[20] == 'c');
     assert(buffer[23] == 0x00); // Terminador
     
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
+/**
+ * Testa codificação de um subdomínio (www.example.com)
+ * Verifica se domínios com múltiplos labels são codificados corretamente,
+ * incluindo labels de tamanhos diferentes.
+ */
 void test_encodeDomainName_subdomain() {
     std::cout << "  [TEST] encodeDomainName - subdomínio... ";
     
@@ -50,9 +81,14 @@ void test_encodeDomainName_subdomain() {
     assert(buffer[24] == 0x03); // "com"
     assert(buffer[28] == 0x00); // Terminador
     
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
+/**
+ * Testa tratamento de domínio vazio
+ * Verifica se o parser rejeita corretamente domínios vazios,
+ * que são inválidos segundo RFC 1035.
+ */
 void test_encodeDomainName_empty() {
     std::cout << "  [TEST] encodeDomainName - domínio vazio... ";
     
@@ -64,10 +100,15 @@ void test_encodeDomainName_empty() {
         DNSParser::serialize(msg);
         assert(false && "Deveria lançar exceção para domínio vazio");
     } catch (const std::invalid_argument& e) {
-        std::cout << "✅ (exceção esperada)\n";
+        std::cout << " (exceção esperada)\n";
     }
 }
 
+/**
+ * Testa validação de limite de tamanho total do domínio (255 caracteres)
+ * RFC 1035 especifica que nomes DNS não podem exceder 255 caracteres totais.
+ * Este teste verifica se o parser rejeita corretamente domínios muito longos.
+ */
 void test_encodeDomainName_too_long() {
     std::cout << "  [TEST] encodeDomainName - domínio > 255 chars... ";
     
@@ -96,10 +137,15 @@ void test_encodeDomainName_too_long() {
         DNSParser::serialize(msg);
         assert(false && "Deveria lançar exceção para domínio > 255 chars");
     } catch (const std::invalid_argument& e) {
-        std::cout << "✅ (exceção esperada)\n";
+        std::cout << " (exceção esperada)\n";
     }
 }
 
+/**
+ * Testa validação de limite de tamanho de label individual (63 caracteres)
+ * RFC 1035 especifica que cada label não pode exceder 63 caracteres.
+ * Este teste verifica se o parser rejeita corretamente labels muito longos.
+ */
 void test_encodeDomainName_label_too_long() {
     std::cout << "  [TEST] encodeDomainName - label > 63 chars... ";
     
@@ -115,10 +161,15 @@ void test_encodeDomainName_label_too_long() {
         DNSParser::serialize(msg);
         assert(false && "Deveria lançar exceção para label > 63 chars");
     } catch (const std::invalid_argument& e) {
-        std::cout << "✅ (exceção esperada)\n";
+        std::cout << " (exceção esperada)\n";
     }
 }
 
+/**
+ * Testa codificação de label com tamanho máximo válido (63 caracteres)
+ * Verifica se labels com exatamente 63 caracteres são aceitos corretamente,
+ * testando o limite superior do RFC 1035.
+ */
 void test_encodeDomainName_max_valid_label() {
     std::cout << "  [TEST] encodeDomainName - label com 63 chars (válido)... ";
     
@@ -133,11 +184,18 @@ void test_encodeDomainName_max_valid_label() {
     auto buffer = DNSParser::serialize(msg);
     assert(buffer[12] == 63); // Tamanho do label
     
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
-// ========== Testes de Serialização de Header ==========
+// ========== Testes de Serialização de Header DNS ==========
+// Estes testes verificam a serialização correta do header DNS de 12 bytes,
+// incluindo ID, flags, contadores e endianness (big-endian).
 
+/**
+ * Testa estrutura básica do header DNS
+ * Verifica se todos os campos do header são serializados corretamente:
+ * ID (2 bytes), flags (2 bytes), contadores (8 bytes)
+ */
 void test_serialize_header_structure() {
     std::cout << "  [TEST] serialize - estrutura do header... ";
     
@@ -167,9 +225,14 @@ void test_serialize_header_structure() {
     assert(buffer[8] == 0x00 && buffer[9] == 0x00); // NSCOUNT
     assert(buffer[10] == 0x00 && buffer[11] == 0x00); // ARCOUNT
     
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
+/**
+ * Testa codificação de flags DNS
+ * Verifica se as flags DNS são codificadas corretamente no formato binário,
+ * incluindo QR, OPCODE, AA, TC, RD, RA, Z e RCODE.
+ */
 void test_serialize_flags_encoding() {
     std::cout << "  [TEST] serialize - codificação de flags... ";
     
@@ -193,9 +256,14 @@ void test_serialize_flags_encoding() {
     assert(buffer[2] == 0x01);
     assert(buffer[3] == 0x00);
     
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
+/**
+ * Testa serialização da seção de question
+ * Verifica se a seção de question é serializada corretamente após o nome codificado,
+ * incluindo QTYPE e QCLASS em formato big-endian.
+ */
 void test_serialize_question_section() {
     std::cout << "  [TEST] serialize - seção de question... ";
     
@@ -217,9 +285,14 @@ void test_serialize_question_section() {
     assert(buffer[qtype_offset + 2] == 0x00);
     assert(buffer[qtype_offset + 3] == 0x01); // IN = 1
     
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
+/**
+ * Testa serialização de múltiplas questions
+ * Verifica se mensagens DNS com múltiplas questions são serializadas corretamente,
+ * incluindo o contador QDCOUNT e a concatenação das seções de question.
+ */
 void test_serialize_multiple_questions() {
     std::cout << "  [TEST] serialize - múltiplas questions... ";
     
@@ -240,11 +313,18 @@ void test_serialize_multiple_questions() {
     // example.com: 1+7+1+3+1 = 13 bytes
     assert(buffer.size() == 12 + (12+4) + (13+4)); // header + question1 + question2 = 45
     
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
-// ========== Testes de Endianness ==========
+// ========== Testes de Endianness (Big-Endian) ==========
+// Estes testes verificam se todos os campos numéricos são serializados
+// em formato big-endian (network byte order), conforme especificado no RFC 1035.
 
+/**
+ * Testa serialização em formato big-endian (network byte order)
+ * Verifica se campos de 16 bits (ID, contadores) são serializados
+ * com o byte mais significativo primeiro, conforme padrão de rede.
+ */
 void test_network_byte_order() {
     std::cout << "  [TEST] network byte order (big-endian)... ";
     
@@ -260,17 +340,22 @@ void test_network_byte_order() {
     assert(buffer[4] == 0x00 && buffer[5] == 0x05);
     assert(buffer[6] == 0xAB && buffer[7] == 0xCD);
     
-    std::cout << "✅\n";
+    std::cout << "\n";
 }
 
-// ========== Runner ==========
+// ========== Função Principal de Testes ==========
 
+/**
+ * Função principal que executa todos os testes unitários do DNSParser
+ * Organiza os testes em categorias lógicas e fornece feedback detalhado
+ * sobre o resultado de cada teste, facilitando a identificação de problemas.
+ */
 int main() {
     std::cout << "\n========================================\n";
     std::cout << "  Testes Unitários - DNSParser\n";
     std::cout << "========================================\n\n";
     
-    std::cout << "→ Testes de encodeDomainName:\n";
+    std::cout << "→ Testes de Codificação de Nomes de Domínio:\n";
     test_encodeDomainName_simple();
     test_encodeDomainName_subdomain();
     test_encodeDomainName_empty();
@@ -278,17 +363,17 @@ int main() {
     test_encodeDomainName_label_too_long();
     test_encodeDomainName_max_valid_label();
     
-    std::cout << "\n→ Testes de Serialização:\n";
+    std::cout << "\n→ Testes de Serialização de Header DNS:\n";
     test_serialize_header_structure();
     test_serialize_flags_encoding();
     test_serialize_question_section();
     test_serialize_multiple_questions();
     
-    std::cout << "\n→ Testes de Endianness:\n";
+    std::cout << "\n→ Testes de Endianness (Big-Endian):\n";
     test_network_byte_order();
     
     std::cout << "\n========================================\n";
-    std::cout << "  ✅ Todos os testes passaram!\n";
+    std::cout << "   Todos os testes passaram!\n";
     std::cout << "========================================\n\n";
     
     return 0;

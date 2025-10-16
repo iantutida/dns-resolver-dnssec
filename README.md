@@ -422,14 +422,6 @@ SECURE (AD=1)
 | **Cache HIT positivo** | **1-5ms** | **100x mais rapido!** |
 | **Cache HIT negativo** | **1-5ms** | **300x mais rapido!** |
 
-### Otimizações Implementadas
-
-- Glue records (evita queries adicionais)
-- CNAME + A optimization (usa resposta combinada)
-- Cache positivo e negativo
-- LRU policy (gerenciamento eficiente)
-- daemon_available_ flag (evita tentativas repetidas)
-
 ---
 
 ## Compilação e Build
@@ -642,29 +634,6 @@ clang++ --version  # Requer 5.0+
 
 ## Autores
 
-João Victor Lourenço Zuanazzi, Ian Tutida Leite, Tiago Amarilha Rodrigues
+João Victor Zuanazzi Lourenço, Ian Tutida Leite, Tiago Amarilha Rodrigues
 
 Desenvolvido como parte do curso de Redes de Computadores.
-
----
-
-## Referências
-
-### DNS Protocol
-- [RFC 1034 - Domain Names: Concepts](https://datatracker.ietf.org/doc/html/rfc1034)
-- [RFC 1035 - Domain Names: Implementation](https://datatracker.ietf.org/doc/html/rfc1035)
-- [RFC 2308 - Negative Caching](https://datatracker.ietf.org/doc/html/rfc2308)
-
-### DNSSEC
-- [RFC 4033 - DNSSEC Introduction](https://datatracker.ietf.org/doc/html/rfc4033)
-- [RFC 4034 - Resource Records](https://datatracker.ietf.org/doc/html/rfc4034)
-- [RFC 4035 - Protocol Modifications](https://datatracker.ietf.org/doc/html/rfc4035)
-
-### DNS over TLS
-- [RFC 7858 - DNS over TLS](https://datatracker.ietf.org/doc/html/rfc7858)
-- [RFC 8310 - DoT Usage Profiles](https://datatracker.ietf.org/doc/html/rfc8310)
-
-### Guias e Tutoriais
-- [Beej's Guide to Network Programming](https://beej.us/guide/bgnet/)
-- [DNS Protocol Basics](https://www2.cs.duke.edu/courses/fall16/compsci356/DNS/DNS-primer.pdf)
-- [OpenSSL Documentation](https://www.openssl.org/docs/)
